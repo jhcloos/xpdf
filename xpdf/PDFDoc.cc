@@ -36,6 +36,7 @@
 #ifndef DISABLE_OUTLINE
 #include "Outline.h"
 #endif
+#include "OptionalContent.h"
 #include "PDFDoc.h"
 
 //------------------------------------------------------------------------
@@ -48,14 +49,17 @@
 //------------------------------------------------------------------------
 
 PDFDoc::PDFDoc(GString *fileNameA, GString *ownerPassword,
-	       GString *userPassword, void *guiDataA) {
+	       GString *userPassword, PDFCore *coreA) {
   Object obj;
   GString *fileName1, *fileName2;
+#ifdef WIN32
+  int n, i;
+#endif
 
   ok = gFalse;
   errCode = errNone;
 
-  guiData = guiDataA;
+  core = coreA;
 
   file = NULL;
   str = NULL;
@@ -64,16 +68,25 @@ PDFDoc::PDFDoc(GString *fileNameA, GString *ownerPassword,
 #ifndef DISABLE_OUTLINE
   outline = NULL;
 #endif
+  optContent = NULL;
 
   fileName = fileNameA;
-  fileName1 = fileName;
+#ifdef WIN32
+  n = fileName->getLength();
+  fileNameU = (wchar_t *)gmallocn(n + 1, sizeof(wchar_t));
+  for (i = 0; i < n; ++i) {
+    fileNameU[i] = (wchar_t)(fileName->getChar(i) & 0xff);
+  }
+  fileNameU[n] = L'\0';
+#endif
 
+  fileName1 = fileName;
 
   // try to open file
   fileName2 = NULL;
 #ifdef VMS
   if (!(file = fopen(fileName1->getCString(), "rb", "ctx=stm"))) {
-    error(-1, "Couldn't open file '%s'", fileName1->getCString());
+    error(errIO, -1, "Couldn't open file '{0:t}'", fileName1);
     errCode = errOpenFile;
     return;
   }
@@ -84,7 +97,7 @@ PDFDoc::PDFDoc(GString *fileNameA, GString *ownerPassword,
     if (!(file = fopen(fileName2->getCString(), "rb"))) {
       fileName2->upperCase();
       if (!(file = fopen(fileName2->getCString(), "rb"))) {
-	error(-1, "Couldn't open file '%s'", fileName->getCString());
+	error(errIO, -1, "Couldn't open file '{0:t}'", fileName);
 	delete fileName2;
 	errCode = errOpenFile;
 	return;
@@ -103,16 +116,15 @@ PDFDoc::PDFDoc(GString *fileNameA, GString *ownerPassword,
 
 #ifdef WIN32
 PDFDoc::PDFDoc(wchar_t *fileNameA, int fileNameLen, GString *ownerPassword,
-	       GString *userPassword, void *guiDataA) {
+	       GString *userPassword, PDFCore *coreA) {
   OSVERSIONINFO version;
-  wchar_t fileName2[_MAX_PATH + 1];
   Object obj;
   int i;
 
   ok = gFalse;
   errCode = errNone;
 
-  guiData = guiDataA;
+  core = coreA;
 
   file = NULL;
   str = NULL;
@@ -121,30 +133,28 @@ PDFDoc::PDFDoc(wchar_t *fileNameA, int fileNameLen, GString *ownerPassword,
 #ifndef DISABLE_OUTLINE
   outline = NULL;
 #endif
+  optContent = NULL;
 
-  //~ file name should be stored in Unicode (?)
+  // save both Unicode and 8-bit copies of the file name
   fileName = new GString();
+  fileNameU = (wchar_t *)gmallocn(fileNameLen + 1, sizeof(wchar_t));
   for (i = 0; i < fileNameLen; ++i) {
     fileName->append((char)fileNameA[i]);
+    fileNameU[i] = fileNameA[i];
   }
-
-  // zero-terminate the file name string
-  for (i = 0; i < fileNameLen && i < _MAX_PATH; ++i) {
-    fileName2[i] = fileNameA[i];
-  }
-  fileName2[i] = 0;
+  fileNameU[fileNameLen] = L'\0';
 
   // try to open file
   // NB: _wfopen is only available in NT
   version.dwOSVersionInfoSize = sizeof(version);
   GetVersionEx(&version);
   if (version.dwPlatformId == VER_PLATFORM_WIN32_NT) {
-    file = _wfopen(fileName2, L"rb");
+    file = _wfopen(fileNameU, L"rb");
   } else {
     file = fopen(fileName->getCString(), "rb");
   }
   if (!file) {
-    error(-1, "Couldn't open file '%s'", fileName->getCString());
+    error(errIO, -1, "Couldn't open file '{0:t}'", fileName);
     errCode = errOpenFile;
     return;
   }
@@ -158,14 +168,29 @@ PDFDoc::PDFDoc(wchar_t *fileNameA, int fileNameLen, GString *ownerPassword,
 #endif
 
 PDFDoc::PDFDoc(BaseStream *strA, GString *ownerPassword,
-	       GString *userPassword, void *guiDataA) {
+	       GString *userPassword, PDFCore *coreA) {
+#ifdef WIN32
+  int n, i;
+#endif
+
   ok = gFalse;
   errCode = errNone;
-  guiData = guiDataA;
+  core = coreA;
   if (strA->getFileName()) {
     fileName = strA->getFileName()->copy();
+#ifdef WIN32
+    n = fileName->getLength();
+    fileNameU = (wchar_t *)gmallocn(n + 1, sizeof(wchar_t));
+    for (i = 0; i < n; ++i) {
+      fileNameU[i] = (wchar_t)(fileName->getChar(i) & 0xff);
+    }
+    fileNameU[n] = L'\0';
+#endif
   } else {
     fileName = NULL;
+#ifdef WIN32
+    fileNameU = NULL;
+#endif
   }
   file = NULL;
   str = strA;
@@ -174,6 +199,7 @@ PDFDoc::PDFDoc(BaseStream *strA, GString *ownerPassword,
 #ifndef DISABLE_OUTLINE
   outline = NULL;
 #endif
+  optContent = NULL;
   ok = setup(ownerPassword, userPassword);
 }
 
@@ -183,26 +209,18 @@ GBool PDFDoc::setup(GString *ownerPassword, GString *userPassword) {
   // check header
   checkHeader();
 
-  // read xref table
-  xref = new XRef(str);
-  if (!xref->isOk()) {
-    error(-1, "Couldn't read xref table");
-    errCode = xref->getErrorCode();
-    return gFalse;
-  }
-
-  // check for encryption
-  if (!checkEncryption(ownerPassword, userPassword)) {
-    errCode = errEncrypted;
-    return gFalse;
-  }
-
-  // read catalog
-  catalog = new Catalog(xref);
-  if (!catalog->isOk()) {
-    error(-1, "Couldn't read page catalog");
-    errCode = errBadCatalog;
-    return gFalse;
+  // read the xref and catalog
+  if (!PDFDoc::setup2(ownerPassword, userPassword, gFalse)) {
+    if (errCode == errDamaged || errCode == errBadCatalog) {
+      // try repairing the xref table
+      error(errSyntaxWarning, -1,
+	    "PDF file is damaged - attempting to reconstruct xref table...");
+      if (!PDFDoc::setup2(ownerPassword, userPassword, gTrue)) {
+	return gFalse;
+      }
+    } else {
+      return gFalse;
+    }
   }
 
 #ifndef DISABLE_OUTLINE
@@ -210,11 +228,52 @@ GBool PDFDoc::setup(GString *ownerPassword, GString *userPassword) {
   outline = new Outline(catalog->getOutline(), xref);
 #endif
 
+  // read the optional content info
+  optContent = new OptionalContent(this);
+
   // done
   return gTrue;
 }
 
+GBool PDFDoc::setup2(GString *ownerPassword, GString *userPassword,
+		     GBool repairXRef) {
+  // read xref table
+  xref = new XRef(str, repairXRef);
+  if (!xref->isOk()) {
+    error(errSyntaxError, -1, "Couldn't read xref table");
+    errCode = xref->getErrorCode();
+    delete xref;
+    xref = NULL;
+    return gFalse;
+  }
+
+  // check for encryption
+  if (!checkEncryption(ownerPassword, userPassword)) {
+    errCode = errEncrypted;
+    delete xref;
+    xref = NULL;
+    return gFalse;
+  }
+
+  // read catalog
+  catalog = new Catalog(this);
+  if (!catalog->isOk()) {
+    error(errSyntaxError, -1, "Couldn't read page catalog");
+    errCode = errBadCatalog;
+    delete catalog;
+    catalog = NULL;
+    delete xref;
+    xref = NULL;
+    return gFalse;
+  }
+
+  return gTrue;
+}
+
 PDFDoc::~PDFDoc() {
+  if (optContent) {
+    delete optContent;
+  }
 #ifndef DISABLE_OUTLINE
   if (outline) {
     delete outline;
@@ -235,6 +294,11 @@ PDFDoc::~PDFDoc() {
   if (fileName) {
     delete fileName;
   }
+#ifdef WIN32
+  if (fileNameU) {
+    gfree(fileNameU);
+  }
+#endif
 }
 
 // Check for a PDF header on this stream.  Skip past some garbage
@@ -255,19 +319,20 @@ void PDFDoc::checkHeader() {
     }
   }
   if (i >= headerSearchSize - 5) {
-    error(-1, "May not be a PDF file (continuing anyway)");
+    error(errSyntaxWarning, -1, "May not be a PDF file (continuing anyway)");
     return;
   }
   str->moveStart(i);
   if (!(p = strtok(&hdrBuf[i+5], " \t\n\r"))) {
-    error(-1, "May not be a PDF file (continuing anyway)");
+    error(errSyntaxWarning, -1, "May not be a PDF file (continuing anyway)");
     return;
   }
   pdfVersion = atof(p);
   if (!(hdrBuf[i+5] >= '0' && hdrBuf[i+5] <= '9') ||
       pdfVersion > supportedPDFVersionNum + 0.0001) {
-    error(-1, "PDF version %s -- xpdf supports version %s"
-	  " (continuing anyway)", p, supportedPDFVersionStr);
+    error(errSyntaxWarning, -1,
+	  "PDF version {0:s} -- xpdf supports version {1:s} (continuing anyway)",
+	  p, supportedPDFVersionStr);
   }
 }
 
@@ -280,7 +345,10 @@ GBool PDFDoc::checkEncryption(GString *ownerPassword, GString *userPassword) {
   xref->getTrailerDict()->dictLookup("Encrypt", &encrypt);
   if ((encrypted = encrypt.isDict())) {
     if ((secHdlr = SecurityHandler::make(this, &encrypt))) {
-      if (secHdlr->checkEncryption(ownerPassword, userPassword)) {
+      if (secHdlr->isUnencrypted()) {
+	// no encryption
+	ret = gTrue;
+      } else if (secHdlr->checkEncryption(ownerPassword, userPassword)) {
 	// authorization succeeded
        	xref->setEncryption(secHdlr->getPermissionFlags(),
 			    secHdlr->getOwnerPasswordOk(),
@@ -315,7 +383,7 @@ void PDFDoc::displayPage(OutputDev *out, int page,
     printf("***** page %d *****\n", page);
   }
   catalog->getPage(page)->display(out, hDPI, vDPI,
-				  rotate, useMediaBox, crop, printing, catalog,
+				  rotate, useMediaBox, crop, printing,
 				  abortCheckCbk, abortCheckCbkData);
 }
 
@@ -329,6 +397,7 @@ void PDFDoc::displayPages(OutputDev *out, int firstPage, int lastPage,
   for (page = firstPage; page <= lastPage; ++page) {
     displayPage(out, page, hDPI, vDPI, rotate, useMediaBox, crop, printing,
 		abortCheckCbk, abortCheckCbkData);
+    catalog->doneWithPage(page);
   }
 }
 
@@ -341,16 +410,16 @@ void PDFDoc::displayPageSlice(OutputDev *out, int page,
   catalog->getPage(page)->displaySlice(out, hDPI, vDPI,
 				       rotate, useMediaBox, crop,
 				       sliceX, sliceY, sliceW, sliceH,
-				       printing, catalog,
+				       printing,
 				       abortCheckCbk, abortCheckCbkData);
 }
 
 Links *PDFDoc::getLinks(int page) {
-  return catalog->getPage(page)->getLinks(catalog);
+  return catalog->getPage(page)->getLinks();
 }
 
 void PDFDoc::processLinks(OutputDev *out, int page) {
-  catalog->getPage(page)->processLinks(out, catalog);
+  catalog->getPage(page)->processLinks(out);
 }
 
 GBool PDFDoc::isLinearized() {
@@ -389,7 +458,7 @@ GBool PDFDoc::saveAs(GString *name) {
   int c;
 
   if (!(f = fopen(name->getCString(), "wb"))) {
-    error(-1, "Couldn't open file '%s'", name->getCString());
+    error(errIO, -1, "Couldn't open file '{0:t}'", name);
     return gFalse;
   }
   str->reset();
@@ -399,4 +468,91 @@ GBool PDFDoc::saveAs(GString *name) {
   str->close();
   fclose(f);
   return gTrue;
+}
+
+GBool PDFDoc::saveEmbeddedFile(int idx, char *path) {
+  FILE *f;
+  GBool ret;
+
+  if (!(f = fopen(path, "wb"))) {
+    return gFalse;
+  }
+  ret = saveEmbeddedFile2(idx, f);
+  fclose(f);
+  return ret;
+}
+
+#ifdef WIN32
+GBool PDFDoc::saveEmbeddedFile(int idx, wchar_t *path, int pathLen) {
+  FILE *f;
+  OSVERSIONINFO version;
+  wchar_t path2w[_MAX_PATH + 1];
+  char path2c[_MAX_PATH + 1];
+  int i;
+  GBool ret;
+
+  // NB: _wfopen is only available in NT
+  version.dwOSVersionInfoSize = sizeof(version);
+  GetVersionEx(&version);
+  if (version.dwPlatformId == VER_PLATFORM_WIN32_NT) {
+    for (i = 0; i < pathLen && i < _MAX_PATH; ++i) {
+      path2w[i] = path[i];
+    }
+    path2w[i] = 0;
+    f = _wfopen(path2w, L"wb");
+  } else {
+    for (i = 0; i < pathLen && i < _MAX_PATH; ++i) {
+      path2c[i] = (char)path[i];
+    }
+    path2c[i] = 0;
+    f = fopen(path2c, "wb");
+  }
+  if (!f) {
+    return gFalse;
+  }
+  ret = saveEmbeddedFile2(idx, f);
+  fclose(f);
+  return ret;
+}
+#endif
+
+GBool PDFDoc::saveEmbeddedFile2(int idx, FILE *f) {
+  Object strObj;
+  int c;
+
+  if (!catalog->getEmbeddedFileStreamObj(idx, &strObj)) {
+    return gFalse;
+  }
+  strObj.streamReset();
+  while ((c = strObj.streamGetChar()) != EOF) {
+    fputc(c, f);
+  }
+  strObj.streamClose();
+  strObj.free();
+  return gTrue;
+}
+
+char *PDFDoc::getEmbeddedFileMem(int idx, int *size) {
+  Object strObj;
+  char *buf;
+  int bufSize, len, c;
+
+  if (!catalog->getEmbeddedFileStreamObj(idx, &strObj)) {
+    return NULL;
+  }
+  strObj.streamReset();
+  bufSize = 1024;
+  buf = (char *)gmalloc(bufSize);
+  len = 0;
+  while ((c = strObj.streamGetChar()) != EOF) {
+    if (len == bufSize) {
+      bufSize *= 2;
+      buf = (char *)grealloc(buf, bufSize);
+    }
+    buf[len++] = (char)c;
+  }
+  strObj.streamClose();
+  strObj.free();
+  *size = len;
+  return buf;
 }

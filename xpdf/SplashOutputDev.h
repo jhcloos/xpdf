@@ -58,14 +58,20 @@ public:
 
   // Does this device use upside-down coordinates?
   // (Upside-down means (0,0) is the top left corner of the page.)
-  virtual GBool upsideDown() { return gTrue; }
+  virtual GBool upsideDown() { return bitmapTopDown ^ bitmapUpsideDown; }
 
   // Does this device use drawChar() or drawString()?
   virtual GBool useDrawChar() { return gTrue; }
 
+  // Does this device use tilingPatternFill()?  If this returns false,
+  // tiling pattern fills will be reduced to a series of other drawing
+  // operations.
+  virtual GBool useTilingPatternFill() { return gTrue; }
+
   // Does this device use beginType3Char/endType3Char?  Otherwise,
   // text in Type 3 fonts will be drawn with drawChar/drawString.
   virtual GBool interpretType3Chars() { return gTrue; }
+
 
   //----- initialization and control
 
@@ -95,6 +101,7 @@ public:
   virtual void updateBlendMode(GfxState *state);
   virtual void updateFillOpacity(GfxState *state);
   virtual void updateStrokeOpacity(GfxState *state);
+  virtual void updateTransfer(GfxState *state);
 
   //----- update text state
   virtual void updateFont(GfxState *state);
@@ -103,6 +110,11 @@ public:
   virtual void stroke(GfxState *state);
   virtual void fill(GfxState *state);
   virtual void eoFill(GfxState *state);
+  virtual void tilingPatternFill(GfxState *state, Gfx *gfx, Object *str,
+				 int paintType, Dict *resDict,
+				 double *mat, double *bbox,
+				 int x0, int y0, int x1, int y1,
+				 double xStep, double yStep);
 
   //----- path clipping
   virtual void clip(GfxState *state);
@@ -124,6 +136,10 @@ public:
   virtual void drawImageMask(GfxState *state, Object *ref, Stream *str,
 			     int width, int height, GBool invert,
 			     GBool inlineImg);
+  virtual void setSoftMaskFromImageMask(GfxState *state,
+					Object *ref, Stream *str,
+					int width, int height, GBool invert,
+					GBool inlineImg);
   virtual void drawImage(GfxState *state, Object *ref, Stream *str,
 			 int width, int height, GfxImageColorMap *colorMap,
 			 int *maskColors, GBool inlineImg);
@@ -174,6 +190,10 @@ public:
   // caller.
   SplashBitmap *takeBitmap();
 
+  // Set this flag to true to generate an upside-down bitmap (useful
+  // for Windows BMP files).
+  void setBitmapUpsideDown(GBool f) { bitmapUpsideDown = f; }
+
   // Get the Splash object.
   Splash *getSplash() { return splash; }
 
@@ -187,26 +207,36 @@ public:
   void setFillColor(int r, int g, int b);
 
   // Get a font object for a Base-14 font, using the Latin-1 encoding.
-  SplashFont *getFont(GString *name, double *textMatA);
+  SplashFont *getFont(GString *name, SplashCoord *textMatA);
 
   SplashFont *getCurrentFont() { return font; }
 
+  // If <skipTextA> is true, don't draw horizontal text.
+  // If <skipRotatedTextA> is true, don't draw rotated (non-horizontal) text.
+  void setSkipText(GBool skipHorizTextA, GBool skipRotatedTextA)
+    { skipHorizText = skipHorizTextA; skipRotatedText = skipRotatedTextA; }
+
+  int getNestCount() { return nestCount; }
+
+
 #if 1 //~tmp: turn off anti-aliasing temporarily
-  virtual GBool getVectorAntialias();
-  virtual void setVectorAntialias(GBool vaa);
+  virtual void setInShading(GBool sh);
 #endif
 
 private:
 
   void setupScreenParams(double hDPI, double vDPI);
+  SplashPattern *getColor(GfxGray gray);
+  SplashPattern *getColor(GfxRGB *rgb);
 #if SPLASH_CMYK
-  SplashPattern *getColor(GfxGray gray, GfxRGB *rgb, GfxCMYK *cmyk);
-#else
-  SplashPattern *getColor(GfxGray gray, GfxRGB *rgb);
+  SplashPattern *getColor(GfxCMYK *cmyk);
 #endif
-  SplashPath *convertPath(GfxState *state, GfxPath *path);
+  void setOverprintMask(GfxColorSpace *colorSpace, GBool overprintFlag,
+			int overprintMode, GfxColor *singleColor);
+  SplashPath *convertPath(GfxState *state, GfxPath *path,
+			  GBool dropEmptySubpaths);
   void doUpdateFont(GfxState *state);
-  void drawType3Glyph(T3FontCache *t3Font,
+  void drawType3Glyph(GfxState *state, T3FontCache *t3Font,
 		      T3FontCacheTag *tag, Guchar *data);
   static GBool imageMaskSrc(void *data, SplashColorPtr line);
   static GBool imageSrc(void *data, SplashColorPtr colorLine,
@@ -219,11 +249,14 @@ private:
   SplashColorMode colorMode;
   int bitmapRowPad;
   GBool bitmapTopDown;
+  GBool bitmapUpsideDown;
   GBool allowAntialias;
   GBool vectorAntialias;
   GBool reverseVideo;		// reverse video mode
   SplashColor paperColor;	// paper color
   SplashScreenParams screenParams;
+  GBool skipHorizText;
+  GBool skipRotatedText;
 
   XRef *xref;			// xref table for current document
 
@@ -235,6 +268,7 @@ private:
     t3FontCache[splashOutT3FontCacheSize];
   int nT3Fonts;			// number of valid entries in t3FontCache
   T3GlyphStack *t3GlyphStack;	// Type 3 glyph context stack
+  GBool haveT3Dx;		// set after seeing a d0/d1 operator
 
   SplashFont *font;		// current font
   GBool needFontUpdate;		// set when the font needs to be updated
@@ -242,6 +276,8 @@ private:
 
   SplashTransparencyGroup *	// transparency group stack
     transpGroupStack;
+
+  int nestCount;
 };
 
 #endif

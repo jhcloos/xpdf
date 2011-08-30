@@ -83,7 +83,7 @@ int main(int argc, char *argv[]) {
   PDFDoc *doc;
   GString *fileName;
   char *ppmRoot;
-  char ppmFile[512];
+  GString *ppmFile;
   GString *ownerPW, *userPW;
   SplashColor paperColor;
   SplashOutputDev *splashOut;
@@ -165,6 +165,7 @@ int main(int argc, char *argv[]) {
   if (lastPage < 1 || lastPage > doc->getNumPages())
     lastPage = doc->getNumPages();
 
+
   // write PPM files
   if (mono) {
     paperColor[0] = 0xff;
@@ -180,10 +181,15 @@ int main(int argc, char *argv[]) {
   for (pg = firstPage; pg <= lastPage; ++pg) {
     doc->displayPage(splashOut, pg, resolution, resolution, 0,
 		     gFalse, gTrue, gFalse);
-    sprintf(ppmFile, "%.*s-%06d.%s",
-	    (int)sizeof(ppmFile) - 32, ppmRoot, pg,
-	    mono ? "pbm" : gray ? "pgm" : "ppm");
-    splashOut->getBitmap()->writePNMFile(ppmFile);
+    if (!strcmp(ppmRoot, "-")) {
+      splashOut->getBitmap()->writePNMFile(stdout);
+    } else {
+      ppmFile = GString::format("{0:s}-{1:06d}.{2:s}",
+				ppmRoot, pg,
+				mono ? "pbm" : gray ? "pgm" : "ppm");
+      splashOut->getBitmap()->writePNMFile(ppmFile->getCString());
+      delete ppmFile;
+    }
   }
   delete splashOut;
 

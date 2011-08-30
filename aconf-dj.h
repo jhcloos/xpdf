@@ -46,6 +46,7 @@
 #define HAVE_POPEN 1
 #undef HAVE_MKSTEMP
 #undef SELECT_TAKES_INT
+#define HAVE_STD_SORT 1
 #undef HAVE_FSEEK64
 
 /*

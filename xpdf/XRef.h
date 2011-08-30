@@ -43,7 +43,7 @@ class XRef {
 public:
 
   // Constructor.  Read xref table from stream.
-  XRef(BaseStream *strA);
+  XRef(BaseStream *strA, GBool repair);
 
   // Destructor.
   ~XRef();
@@ -67,19 +67,20 @@ public:
   GBool okToChange(GBool ignoreOwnerPW = gFalse);
   GBool okToCopy(GBool ignoreOwnerPW = gFalse);
   GBool okToAddNotes(GBool ignoreOwnerPW = gFalse);
+  int getPermFlags() { return permFlags; }
 
   // Get catalog object.
   Object *getCatalog(Object *obj) { return fetch(rootNum, rootGen, obj); }
 
   // Fetch an indirect reference.
-  Object *fetch(int num, int gen, Object *obj);
+  Object *fetch(int num, int gen, Object *obj, int recursion = 0);
 
   // Return the document's Info dictionary (if any).
   Object *getDocInfo(Object *obj);
   Object *getDocInfoNF(Object *obj);
 
   // Return the number of objects in the xref table.
-  int getNumObjects() { return size; }
+  int getNumObjects() { return last + 1; }
 
   // Return the offset of the last xref table.
   Guint getLastXRefPos() { return lastXRefPos; }
@@ -104,6 +105,7 @@ private:
 				//   at beginning of file)
   XRefEntry *entries;		// xref entries
   int size;			// size of <entries> array
+  int last;			// last used index in <entries>
   int rootNum, rootGen;		// catalog dict
   GBool ok;			// true if xref table is valid
   int errCode;			// error code (if <ok> is false)
@@ -116,7 +118,7 @@ private:
   GBool encrypted;		// true if file is encrypted
   int permFlags;		// permission bits
   GBool ownerPasswordOk;	// true if owner password is correct
-  Guchar fileKey[16];		// file decryption key
+  Guchar fileKey[32];		// file decryption key
   int keyLength;		// length of key, in bytes
   int encVersion;		// encryption version
   CryptAlgorithm encAlgorithm;	// encryption algorithm

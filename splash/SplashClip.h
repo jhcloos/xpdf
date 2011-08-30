@@ -81,6 +81,12 @@ public:
   // will update <x0> and <x1>.
   void clipAALine(SplashBitmap *aaBuf, int *x0, int *x1, int y);
 
+  // Get the rectangle part of the clip region.
+  SplashCoord getXMin() { return xMin; }
+  SplashCoord getXMax() { return xMax; }
+  SplashCoord getYMin() { return yMin; }
+  SplashCoord getYMax() { return yMax; }
+
   // Get the rectangle part of the clip region, in integer coordinates.
   int getXMinI() { return xMinI; }
   int getXMaxI() { return xMaxI; }

@@ -26,7 +26,7 @@
 
 ImageOutputDev::ImageOutputDev(char *fileRootA, GBool dumpJPEGA) {
   fileRoot = copyString(fileRootA);
-  fileName = (char *)gmalloc(strlen(fileRoot) + 20);
+  fileName = (char *)gmalloc((int)strlen(fileRoot) + 20);
   dumpJPEG = dumpJPEGA;
   imgNum = 0;
   ok = gTrue;
@@ -35,6 +35,14 @@ ImageOutputDev::ImageOutputDev(char *fileRootA, GBool dumpJPEGA) {
 ImageOutputDev::~ImageOutputDev() {
   gfree(fileName);
   gfree(fileRoot);
+}
+
+void ImageOutputDev::tilingPatternFill(GfxState *state, Gfx *gfx, Object *str,
+				       int paintType, Dict *resDict,
+				       double *mat, double *bbox,
+				       int x0, int y0, int x1, int y1,
+				       double xStep, double yStep) {
+  // do nothing -- this avoids the potentially slow loop in Gfx.cc
 }
 
 void ImageOutputDev::drawImageMask(GfxState *state, Object *ref, Stream *str,
@@ -51,7 +59,7 @@ void ImageOutputDev::drawImageMask(GfxState *state, Object *ref, Stream *str,
     sprintf(fileName, "%s-%03d.jpg", fileRoot, imgNum);
     ++imgNum;
     if (!(f = fopen(fileName, "wb"))) {
-      error(-1, "Couldn't open image file '%s'", fileName);
+      error(errIO, -1, "Couldn't open image file '{0:s}'", fileName);
       return;
     }
 
@@ -73,7 +81,7 @@ void ImageOutputDev::drawImageMask(GfxState *state, Object *ref, Stream *str,
     sprintf(fileName, "%s-%03d.pbm", fileRoot, imgNum);
     ++imgNum;
     if (!(f = fopen(fileName, "wb"))) {
-      error(-1, "Couldn't open image file '%s'", fileName);
+      error(errIO, -1, "Couldn't open image file '{0:s}'", fileName);
       return;
     }
     fprintf(f, "P4\n");
@@ -115,7 +123,7 @@ void ImageOutputDev::drawImage(GfxState *state, Object *ref, Stream *str,
     sprintf(fileName, "%s-%03d.jpg", fileRoot, imgNum);
     ++imgNum;
     if (!(f = fopen(fileName, "wb"))) {
-      error(-1, "Couldn't open image file '%s'", fileName);
+      error(errIO, -1, "Couldn't open image file '{0:s}'", fileName);
       return;
     }
 
@@ -138,7 +146,7 @@ void ImageOutputDev::drawImage(GfxState *state, Object *ref, Stream *str,
     sprintf(fileName, "%s-%03d.pbm", fileRoot, imgNum);
     ++imgNum;
     if (!(f = fopen(fileName, "wb"))) {
-      error(-1, "Couldn't open image file '%s'", fileName);
+      error(errIO, -1, "Couldn't open image file '{0:s}'", fileName);
       return;
     }
     fprintf(f, "P4\n");
@@ -163,7 +171,7 @@ void ImageOutputDev::drawImage(GfxState *state, Object *ref, Stream *str,
     sprintf(fileName, "%s-%03d.ppm", fileRoot, imgNum);
     ++imgNum;
     if (!(f = fopen(fileName, "wb"))) {
-      error(-1, "Couldn't open image file '%s'", fileName);
+      error(errIO, -1, "Couldn't open image file '{0:s}'", fileName);
       return;
     }
     fprintf(f, "P6\n");
@@ -179,13 +187,20 @@ void ImageOutputDev::drawImage(GfxState *state, Object *ref, Stream *str,
     for (y = 0; y < height; ++y) {
 
       // write the line
-      p = imgStr->getLine();
-      for (x = 0; x < width; ++x) {
-	colorMap->getRGB(p, &rgb);
-	fputc(colToByte(rgb.r), f);
-	fputc(colToByte(rgb.g), f);
-	fputc(colToByte(rgb.b), f);
-	p += colorMap->getNumPixelComps();
+      if ((p = imgStr->getLine())) {
+	for (x = 0; x < width; ++x) {
+	  colorMap->getRGB(p, &rgb);
+	  fputc(colToByte(rgb.r), f);
+	  fputc(colToByte(rgb.g), f);
+	  fputc(colToByte(rgb.b), f);
+	  p += colorMap->getNumPixelComps();
+	}
+      } else {
+	for (x = 0; x < width; ++x) {
+	  fputc(0, f);
+	  fputc(0, f);
+	  fputc(0, f);
+	}
       }
     }
     delete imgStr;

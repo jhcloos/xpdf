@@ -21,6 +21,10 @@
 #include "XRef.h"
 #include "Error.h"
 
+// Max number of nested objects.  This is used to catch infinite loops
+// in the object structure.
+#define recursionLimit 500
+
 Parser::Parser(XRef *xrefA, Lexer *lexerA, GBool allowStreamsA) {
   xref = xrefA;
   lexer = lexerA;
@@ -36,9 +40,10 @@ Parser::~Parser() {
   delete lexer;
 }
 
-Object *Parser::getObj(Object *obj, Guchar *fileKey,
+Object *Parser::getObj(Object *obj, GBool simpleOnly,
+		       Guchar *fileKey,
 		       CryptAlgorithm encAlgorithm, int keyLength,
-		       int objNum, int objGen) {
+		       int objNum, int objGen, int recursion) {
   char *key;
   Stream *str;
   Object obj2;
@@ -57,23 +62,24 @@ Object *Parser::getObj(Object *obj, Guchar *fileKey,
   }
 
   // array
-  if (buf1.isCmd("[")) {
+  if (!simpleOnly && recursion < recursionLimit && buf1.isCmd("[")) {
     shift();
     obj->initArray(xref);
     while (!buf1.isCmd("]") && !buf1.isEOF())
-      obj->arrayAdd(getObj(&obj2, fileKey, encAlgorithm, keyLength,
-			   objNum, objGen));
+      obj->arrayAdd(getObj(&obj2, gFalse, fileKey, encAlgorithm, keyLength,
+			   objNum, objGen, recursion + 1));
     if (buf1.isEOF())
-      error(getPos(), "End of file inside array");
+      error(errSyntaxError, getPos(), "End of file inside array");
     shift();
 
   // dictionary or stream
-  } else if (buf1.isCmd("<<")) {
+  } else if (!simpleOnly && recursion < recursionLimit && buf1.isCmd("<<")) {
     shift();
     obj->initDict(xref);
     while (!buf1.isCmd(">>") && !buf1.isEOF()) {
       if (!buf1.isName()) {
-	error(getPos(), "Dictionary key must be a name object");
+	error(errSyntaxError, getPos(),
+	      "Dictionary key must be a name object");
 	shift();
       } else {
 	key = copyString(buf1.getName());
@@ -82,17 +88,18 @@ Object *Parser::getObj(Object *obj, Guchar *fileKey,
 	  gfree(key);
 	  break;
 	}
-	obj->dictAdd(key, getObj(&obj2, fileKey, encAlgorithm, keyLength,
-				 objNum, objGen));
+	obj->dictAdd(key, getObj(&obj2, gFalse,
+				 fileKey, encAlgorithm, keyLength,
+				 objNum, objGen, recursion + 1));
       }
     }
     if (buf1.isEOF())
-      error(getPos(), "End of file inside dictionary");
+      error(errSyntaxError, getPos(), "End of file inside dictionary");
     // stream objects are not allowed inside content streams or
     // object streams
     if (allowStreams && buf2.isCmd("stream")) {
       if ((str = makeStream(obj, fileKey, encAlgorithm, keyLength,
-			    objNum, objGen))) {
+			    objNum, objGen, recursion + 1))) {
 	obj->initStream(str);
       } else {
 	obj->free();
@@ -142,7 +149,7 @@ Object *Parser::getObj(Object *obj, Guchar *fileKey,
 
 Stream *Parser::makeStream(Object *dict, Guchar *fileKey,
 			   CryptAlgorithm encAlgorithm, int keyLength,
-			   int objNum, int objGen) {
+			   int objNum, int objGen, int recursion) {
   Object obj;
   BaseStream *baseStr;
   Stream *str;
@@ -150,15 +157,18 @@ Stream *Parser::makeStream(Object *dict, Guchar *fileKey,
 
   // get stream start position
   lexer->skipToNextLine();
-  pos = lexer->getPos();
+  if (!(str = lexer->getStream())) {
+    return NULL;
+  }
+  pos = str->getPos();
 
   // get length
-  dict->dictLookup("Length", &obj);
+  dict->dictLookup("Length", &obj, recursion);
   if (obj.isInt()) {
     length = (Guint)obj.getInt();
     obj.free();
   } else {
-    error(getPos(), "Bad 'Length' attribute in stream");
+    error(errSyntaxError, getPos(), "Bad 'Length' attribute in stream");
     obj.free();
     return NULL;
   }
@@ -184,7 +194,7 @@ Stream *Parser::makeStream(Object *dict, Guchar *fileKey,
   if (buf1.isCmd("endstream")) {
     shift();
   } else {
-    error(getPos(), "Missing 'endstream'");
+    error(errSyntaxError, getPos(), "Missing 'endstream'");
     // kludge for broken PDF files: just add 5k to the length, and
     // hope its enough
     length += 5000;

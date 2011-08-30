@@ -15,12 +15,17 @@
 #pragma interface
 #endif
 
+#include "CharTypes.h"
+
+class GList;
+class PDFDoc;
 class XRef;
 class Object;
 class Page;
 class PageAttrs;
 struct Ref;
 class LinkDest;
+class PageTreeNode;
 
 //------------------------------------------------------------------------
 // Catalog
@@ -30,7 +35,7 @@ class Catalog {
 public:
 
   // Constructor.
-  Catalog(XRef *xrefA);
+  Catalog(PDFDoc *docA);
 
   // Destructor.
   ~Catalog();
@@ -42,10 +47,14 @@ public:
   int getNumPages() { return numPages; }
 
   // Get a page.
-  Page *getPage(int i) { return pages[i-1]; }
+  Page *getPage(int i);
 
   // Get the reference for a page object.
-  Ref *getPageRef(int i) { return &pageRefs[i-1]; }
+  Ref *getPageRef(int i);
+
+  // Remove a page from the catalog.  (It can be reloaded later by
+  // calling getPage).
+  void doneWithPage(int i);
 
   // Return base URI, or NULL if none.
   GString *getBaseURI() { return baseURI; }
@@ -73,9 +82,19 @@ public:
 
   Object *getAcroForm() { return &acroForm; }
 
+  Object *getOCProperties() { return &ocProperties; }
+
+  // Get the list of embedded files.
+  int getNumEmbeddedFiles();
+  Unicode *getEmbeddedFileName(int idx);
+  int getEmbeddedFileNameLength(int idx);
+  Object *getEmbeddedFileStreamObj(int idx, Object *strObj);
+
 private:
 
+  PDFDoc *doc;
   XRef *xref;			// the xref table for this PDF file
+  PageTreeNode *pageTree;	// the page tree
   Page **pages;			// array of pages
   Ref *pageRefs;		// object ID for each page
   int numPages;			// number of pages
@@ -87,11 +106,20 @@ private:
   Object structTreeRoot;	// structure tree root dictionary
   Object outline;		// outline dictionary
   Object acroForm;		// AcroForm dictionary
+  Object ocProperties;		// OCProperties dictionary
+  GList *embeddedFiles;		// embedded file list [EmbeddedFile]
   GBool ok;			// true if catalog is valid
 
-  int readPageTree(Dict *pages, PageAttrs *attrs, int start,
-		   char *alreadyRead);
   Object *findDestInTree(Object *tree, GString *name, Object *obj);
+  GBool readPageTree(Object *catDict);
+  int countPageTree(Object *pagesObj);
+  void loadPage(int pg);
+  void loadPage2(int pg, int relPg, PageTreeNode *node);
+  void readEmbeddedFileList(Dict *catDict);
+  void readEmbeddedFileTree(Object *node);
+  void readFileAttachmentAnnots(Object *pageNodeRef,
+				char *touchedObjs);
+  void readEmbeddedFile(Object *fileSpec, Object *name1);
 };
 
 #endif

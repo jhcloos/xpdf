@@ -37,7 +37,8 @@ class LinkAction;
 //------------------------------------------------------------------------
 
 typedef void (*XPDFUpdateCbk)(void *data, GString *fileName,
-			      int pageNum, int numPages, char *linkLabel);
+			      int pageNum, int numPages,
+			      const char *linkLabel);
 
 typedef void (*XPDFActionCbk)(void *data, char *action);
 
@@ -80,8 +81,8 @@ public:
 
   // Update the display, given the specified parameters.
   virtual void update(int topPageA, int scrollXA, int scrollYA,
-		      double zoomA, int rotateA,
-		      GBool force, GBool addToHist);
+		      double zoomA, int rotateA, GBool force,
+		      GBool addToHist, GBool adjustScrollX);
 
   //----- page/position changes
 
@@ -89,14 +90,14 @@ public:
   virtual GBool gotoPrevPage(int dec, GBool top, GBool bottom);
   virtual GBool goForward();
   virtual GBool goBackward();
+  void startPan(int wx, int wy);
+  void endPan(int wx, int wy);
 
   //----- selection
 
   void startSelection(int wx, int wy);
   void endSelection(int wx, int wy);
   void copySelection();
-  void startPan(int wx, int wy);
-  void endPan(int wx, int wy);
 
   //----- hyperlinks
 
@@ -106,20 +107,21 @@ public:
 
   //----- find
 
-  virtual GBool find(char *s, GBool caseSensitive,
-		     GBool next, GBool backward, GBool onePageOnly);
+  virtual GBool find(char *s, GBool caseSensitive, GBool next,
+		     GBool backward, GBool wholeWord, GBool onePageOnly);
   virtual GBool findU(Unicode *u, int len, GBool caseSensitive,
-		      GBool next, GBool backward, GBool onePageOnly);
+		      GBool next, GBool backward,
+		      GBool wholeWord, GBool onePageOnly);
 
   //----- simple modal dialogs
 
-  GBool doQuestionDialog(char *title, GString *msg);
-  void doInfoDialog(char *title, GString *msg);
-  void doErrorDialog(char *title, GString *msg);
+  GBool doQuestionDialog(const char *title, GString *msg);
+  void doInfoDialog(const char *title, GString *msg);
+  void doErrorDialog(const char *title, GString *msg);
 
   //----- password dialog
 
-  GString *getPassword();
+  virtual GString *getPassword();
 
   //----- misc access
 
@@ -177,7 +179,7 @@ private:
   virtual void updateScrollbars();
   void setCursor(Cursor cursor);
   GBool doDialog(int type, GBool hasCancel,
-		 char *title, GString *msg);
+		 const char *title, GString *msg);
   static void dialogOkCbk(Widget widget, XtPointer ptr,
 			  XtPointer callData);
   static void dialogCancelCbk(Widget widget, XtPointer ptr,

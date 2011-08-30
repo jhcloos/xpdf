@@ -31,15 +31,16 @@
 #include "Error.h"
 #include "config.h"
 
-static void printInfoString(Dict *infoDict, char *key, char *text,
+static void printInfoString(Dict *infoDict, const char *key, const char *text,
 			    UnicodeMap *uMap);
-static void printInfoDate(Dict *infoDict, char *key, char *text);
-static void printBox(char *text, PDFRectangle *box);
+static void printInfoDate(Dict *infoDict, const char *key, const char *text);
+static void printBox(const char *text, PDFRectangle *box);
 
 static int firstPage = 1;
 static int lastPage = 0;
 static GBool printBoxes = gFalse;
 static GBool printMetadata = gFalse;
+static GBool rawDates = gFalse;
 static char textEncName[128] = "";
 static char ownerPassword[33] = "\001";
 static char userPassword[33] = "\001";
@@ -56,6 +57,8 @@ static ArgDesc argDesc[] = {
    "print the page bounding boxes"},
   {"-meta",   argFlag,     &printMetadata,    0,
    "print the document metadata (XML)"},
+  {"-rawdates", argFlag,   &rawDates,         0,
+   "print the undecoded date strings directly from the PDF file"},
   {"-enc",    argString,   textEncName,    sizeof(textEncName),
    "output text encoding name"},
   {"-opw",    argString,   ownerPassword,  sizeof(ownerPassword),
@@ -83,7 +86,8 @@ int main(int argc, char *argv[]) {
   GString *ownerPW, *userPW;
   UnicodeMap *uMap;
   Page *page;
-  Object info;
+  Object info, xfa;
+  Object *acroForm;
   char buf[256];
   double w, h, wISO, hISO;
   FILE *f;
@@ -115,7 +119,7 @@ int main(int argc, char *argv[]) {
 
   // get mapping to output encoding
   if (!(uMap = globalParams->getTextEncoding())) {
-    error(-1, "Couldn't get text encoding");
+    error(errConfig, -1, "Couldn't get text encoding");
     delete fileName;
     goto err1;
   }
@@ -166,14 +170,34 @@ int main(int argc, char *argv[]) {
     printInfoString(info.getDict(), "Author",       "Author:         ", uMap);
     printInfoString(info.getDict(), "Creator",      "Creator:        ", uMap);
     printInfoString(info.getDict(), "Producer",     "Producer:       ", uMap);
-    printInfoDate(info.getDict(),   "CreationDate", "CreationDate:   ");
-    printInfoDate(info.getDict(),   "ModDate",      "ModDate:        ");
+    if (rawDates) {
+      printInfoString(info.getDict(), "CreationDate", "CreationDate:   ",
+		      uMap);
+      printInfoString(info.getDict(), "ModDate",      "ModDate:        ",
+		      uMap);
+    } else {
+      printInfoDate(info.getDict(),   "CreationDate", "CreationDate:   ");
+      printInfoDate(info.getDict(),   "ModDate",      "ModDate:        ");
+    }
   }
   info.free();
 
   // print tagging info
   printf("Tagged:         %s\n",
 	 doc->getStructTreeRoot()->isDict() ? "yes" : "no");
+
+  // print form info
+  if ((acroForm = doc->getCatalog()->getAcroForm())->isDict()) {
+    acroForm->dictLookup("XFA", &xfa);
+    if (xfa.isStream() || xfa.isArray()) {
+      printf("Form:           XFA\n");
+    } else {
+      printf("Form:           AcroForm\n");
+    }
+    xfa.free();
+  } else {
+    printf("Form:           none\n");
+  }
 
   // print page count
   printf("Pages:          %d\n", doc->getNumPages());
@@ -295,7 +319,7 @@ int main(int argc, char *argv[]) {
   return exitCode;
 }
 
-static void printInfoString(Dict *infoDict, char *key, char *text,
+static void printInfoString(Dict *infoDict, const char *key, const char *text,
 			    UnicodeMap *uMap) {
   Object obj;
   GString *s1;
@@ -332,7 +356,7 @@ static void printInfoString(Dict *infoDict, char *key, char *text,
   obj.free();
 }
 
-static void printInfoDate(Dict *infoDict, char *key, char *text) {
+static void printInfoDate(Dict *infoDict, const char *key, const char *text) {
   Object obj;
   char *s;
   int year, mon, day, hour, min, sec, n;
@@ -373,15 +397,12 @@ static void printInfoDate(Dict *infoDict, char *key, char *text) {
     } else {
       fputs(s, stdout);
     }
-
-
-
     fputc('\n', stdout);
   }
   obj.free();
 }
 
-static void printBox(char *text, PDFRectangle *box) {
+static void printBox(const char *text, PDFRectangle *box) {
   printf("%s%8.2f %8.2f %8.2f %8.2f\n",
 	 text, box->x1, box->y1, box->x2, box->y2);
 }

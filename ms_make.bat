@@ -1,5 +1,5 @@
 set CC=cl
-set CFLAGS=/DWIN32 /I.. /I..\goo /I..\fofi /O2 /nologo
+set CFLAGS=/DWIN32 /I.. /I..\goo /I..\fofi /I..\splash /O2 /nologo
 set CXX=cl
 set CXXFLAGS=%CFLAGS% /TP
 set LIBPROG=lib
@@ -20,10 +20,11 @@ cd goo
 cd ..\fofi
 %CXX% %CXXFLAGS% /c FoFiBase.cc
 %CXX% %CXXFLAGS% /c FoFiEncodings.cc
+%CXX% %CXXFLAGS% /c FoFiIdentifier.cc
 %CXX% %CXXFLAGS% /c FoFiTrueType.cc
 %CXX% %CXXFLAGS% /c FoFiType1.cc
 %CXX% %CXXFLAGS% /c FoFiType1C.cc
-%LIBPROG% /nologo /out:fofi.lib FoFiBase.obj FoFiEncodings.obj FoFiTrueType.obj FoFiType1.obj FoFiType1C.obj
+%LIBPROG% /nologo /out:fofi.lib FoFiBase.obj FoFiEncodings.obj FoFiIdentifier.obj FoFiTrueType.obj FoFiType1.obj FoFiType1C.obj
 
 cd ..\xpdf
 %CXX% %CXXFLAGS% /c Annot.cc
@@ -50,6 +51,7 @@ cd ..\xpdf
 %CXX% %CXXFLAGS% /c Link.cc
 %CXX% %CXXFLAGS% /c NameToCharCode.cc
 %CXX% %CXXFLAGS% /c Object.cc
+%CXX% %CXXFLAGS% /c OptionalContent.cc
 %CXX% %CXXFLAGS% /c Outline.cc
 %CXX% %CXXFLAGS% /c OutputDev.cc
 %CXX% %CXXFLAGS% /c PDFDoc.cc
@@ -58,6 +60,7 @@ cd ..\xpdf
 %CXX% %CXXFLAGS% /c PSTokenizer.cc
 %CXX% %CXXFLAGS% /c Page.cc
 %CXX% %CXXFLAGS% /c Parser.cc
+%CXX% %CXXFLAGS% /c PreScanOutputDev.cc
 %CXX% %CXXFLAGS% /c SecurityHandler.cc
 %CXX% %CXXFLAGS% /c Stream.cc
 %CXX% %CXXFLAGS% /c TextOutputDev.cc
@@ -68,24 +71,30 @@ cd ..\xpdf
 %CXX% %CXXFLAGS% /c pdftotext.cc
 %CXX% %CXXFLAGS% /c pdfinfo.cc
 %CXX% %CXXFLAGS% /c pdffonts.cc
+%CXX% %CXXFLAGS% /c pdfdetach.cc
 %CXX% %CXXFLAGS% /c pdfimages.cc
 
-%CXX% %LINKFLAGS% /Fepdftops.exe Annot.obj Array.obj BuiltinFont.obj BuiltinFontTables.obj Catalog.obj CharCodeToUnicode.obj CMap.obj Decrypt.obj Dict.obj Error.obj FontEncodingTables.obj Function.obj Gfx.obj GfxFont.obj GfxState.obj GlobalParams.obj JArithmeticDecoder.obj JBIG2Stream.obj JPXStream.obj Lexer.obj Link.obj NameToCharCode.obj Object.obj Outline.obj OutputDev.obj Page.obj Parser.obj PDFDoc.obj PDFDocEncoding.obj PSOutputDev.obj PSTokenizer.obj SecurityHandler.obj Stream.obj UnicodeMap.obj XRef.obj pdftops.obj ..\fofi\fofi.lib ..\goo\Goo.lib shell32.lib user32.lib gdi32.lib advapi32.lib
+rem --- Comment out this line, and uncomment the other pdftops build line
+rem     (see below) to build pdftops with the Splash rasterizer.
+rem     You'll also need to define HAVE_SPLASH in aconf-win32.h.
+%CXX% %LINKFLAGS% /Fepdftops.exe Annot.obj Array.obj BuiltinFont.obj BuiltinFontTables.obj Catalog.obj CharCodeToUnicode.obj CMap.obj Decrypt.obj Dict.obj Error.obj FontEncodingTables.obj Function.obj Gfx.obj GfxFont.obj GfxState.obj GlobalParams.obj JArithmeticDecoder.obj JBIG2Stream.obj JPXStream.obj Lexer.obj Link.obj NameToCharCode.obj Object.obj OptionalContent.obj Outline.obj OutputDev.obj Page.obj Parser.obj PDFDoc.obj PDFDocEncoding.obj PSOutputDev.obj PSTokenizer.obj PreScanOutputDev.obj SecurityHandler.obj Stream.obj UnicodeMap.obj XRef.obj pdftops.obj ..\fofi\fofi.lib ..\goo\Goo.lib shell32.lib user32.lib gdi32.lib advapi32.lib
 
-%CXX% %LINKFLAGS% /Fepdftotext.exe Annot.obj Array.obj BuiltinFont.obj BuiltinFontTables.obj Catalog.obj CharCodeToUnicode.obj CMap.obj Decrypt.obj Dict.obj Error.obj FontEncodingTables.obj Function.obj Gfx.obj GfxFont.obj GfxState.obj GlobalParams.obj JArithmeticDecoder.obj JBIG2Stream.obj JPXStream.obj Lexer.obj Link.obj NameToCharCode.obj Object.obj Outline.obj OutputDev.obj Page.obj Parser.obj PDFDoc.obj PDFDocEncoding.obj PSTokenizer.obj SecurityHandler.obj Stream.obj TextOutputDev.obj UnicodeMap.obj UnicodeTypeTable.obj XRef.obj pdftotext.obj ..\fofi\fofi.lib ..\goo\Goo.lib shell32.lib user32.lib gdi32.lib advapi32.lib
+%CXX% %LINKFLAGS% /Fepdftotext.exe Annot.obj Array.obj BuiltinFont.obj BuiltinFontTables.obj Catalog.obj CharCodeToUnicode.obj CMap.obj Decrypt.obj Dict.obj Error.obj FontEncodingTables.obj Function.obj Gfx.obj GfxFont.obj GfxState.obj GlobalParams.obj JArithmeticDecoder.obj JBIG2Stream.obj JPXStream.obj Lexer.obj Link.obj NameToCharCode.obj Object.obj OptionalContent.obj Outline.obj OutputDev.obj Page.obj Parser.obj PDFDoc.obj PDFDocEncoding.obj PSTokenizer.obj SecurityHandler.obj Stream.obj TextOutputDev.obj UnicodeMap.obj UnicodeTypeTable.obj XRef.obj pdftotext.obj ..\fofi\fofi.lib ..\goo\Goo.lib shell32.lib user32.lib gdi32.lib advapi32.lib
 
-%CXX% %LINKFLAGS% /Fepdfinfo.exe Annot.obj Array.obj BuiltinFont.obj BuiltinFontTables.obj Catalog.obj CharCodeToUnicode.obj CMap.obj Decrypt.obj Dict.obj Error.obj FontEncodingTables.obj Function.obj Gfx.obj GfxFont.obj GfxState.obj GlobalParams.obj JArithmeticDecoder.obj JBIG2Stream.obj JPXStream.obj Lexer.obj Link.obj NameToCharCode.obj Object.obj Outline.obj OutputDev.obj Page.obj Parser.obj PDFDoc.obj PDFDocEncoding.obj PSTokenizer.obj SecurityHandler.obj Stream.obj UnicodeMap.obj XRef.obj pdfinfo.obj ..\fofi\fofi.lib ..\goo\Goo.lib shell32.lib user32.lib gdi32.lib advapi32.lib
+%CXX% %LINKFLAGS% /Fepdfinfo.exe Annot.obj Array.obj BuiltinFont.obj BuiltinFontTables.obj Catalog.obj CharCodeToUnicode.obj CMap.obj Decrypt.obj Dict.obj Error.obj FontEncodingTables.obj Function.obj Gfx.obj GfxFont.obj GfxState.obj GlobalParams.obj JArithmeticDecoder.obj JBIG2Stream.obj JPXStream.obj Lexer.obj Link.obj NameToCharCode.obj Object.obj OptionalContent.obj Outline.obj OutputDev.obj Page.obj Parser.obj PDFDoc.obj PDFDocEncoding.obj PSTokenizer.obj SecurityHandler.obj Stream.obj UnicodeMap.obj XRef.obj pdfinfo.obj ..\fofi\fofi.lib ..\goo\Goo.lib shell32.lib user32.lib gdi32.lib advapi32.lib
 
-%CXX% %LINKFLAGS% /Fepdffonts.exe Annot.obj Array.obj BuiltinFont.obj BuiltinFontTables.obj Catalog.obj CharCodeToUnicode.obj CMap.obj Decrypt.obj Dict.obj Error.obj FontEncodingTables.obj Function.obj Gfx.obj GfxFont.obj GfxState.obj GlobalParams.obj JArithmeticDecoder.obj JBIG2Stream.obj JPXStream.obj Lexer.obj Link.obj NameToCharCode.obj Object.obj Outline.obj OutputDev.obj Page.obj Parser.obj PDFDoc.obj PDFDocEncoding.obj PSTokenizer.obj SecurityHandler.obj Stream.obj UnicodeMap.obj XRef.obj pdffonts.obj ..\fofi\fofi.lib ..\goo\Goo.lib shell32.lib user32.lib gdi32.lib advapi32.lib
+%CXX% %LINKFLAGS% /Fepdffonts.exe Annot.obj Array.obj BuiltinFont.obj BuiltinFontTables.obj Catalog.obj CharCodeToUnicode.obj CMap.obj Decrypt.obj Dict.obj Error.obj FontEncodingTables.obj Function.obj Gfx.obj GfxFont.obj GfxState.obj GlobalParams.obj JArithmeticDecoder.obj JBIG2Stream.obj JPXStream.obj Lexer.obj Link.obj NameToCharCode.obj Object.obj OptionalContent.obj Outline.obj OutputDev.obj Page.obj Parser.obj PDFDoc.obj PDFDocEncoding.obj PSTokenizer.obj SecurityHandler.obj Stream.obj UnicodeMap.obj XRef.obj pdffonts.obj ..\fofi\fofi.lib ..\goo\Goo.lib shell32.lib user32.lib gdi32.lib advapi32.lib
 
-%CXX% %LINKFLAGS% /Fepdfimages.exe Annot.obj Array.obj BuiltinFont.obj BuiltinFontTables.obj Catalog.obj CharCodeToUnicode.obj CMap.obj Decrypt.obj Dict.obj Error.obj FontEncodingTables.obj Function.obj Gfx.obj GfxFont.obj GfxState.obj GlobalParams.obj ImageOutputDev.obj JArithmeticDecoder.obj JBIG2Stream.obj JPXStream.obj Lexer.obj Link.obj NameToCharCode.obj Object.obj Outline.obj OutputDev.obj Page.obj Parser.obj PDFDoc.obj PDFDocEncoding.obj PSTokenizer.obj SecurityHandler.obj Stream.obj UnicodeMap.obj XRef.obj pdfimages.obj ..\fofi\fofi.lib ..\goo\Goo.lib shell32.lib user32.lib gdi32.lib advapi32.lib
+%CXX% %LINKFLAGS% /Fepdfdetach.exe Annot.obj Array.obj BuiltinFont.obj BuiltinFontTables.obj Catalog.obj CharCodeToUnicode.obj CMap.obj Decrypt.obj Dict.obj Error.obj FontEncodingTables.obj Function.obj Gfx.obj GfxFont.obj GfxState.obj GlobalParams.obj JArithmeticDecoder.obj JBIG2Stream.obj JPXStream.obj Lexer.obj Link.obj NameToCharCode.obj Object.obj OptionalContent.obj Outline.obj OutputDev.obj Page.obj Parser.obj PDFDoc.obj PDFDocEncoding.obj PSTokenizer.obj SecurityHandler.obj Stream.obj UnicodeMap.obj XRef.obj pdfdetach.obj ..\fofi\fofi.lib ..\goo\Goo.lib shell32.lib user32.lib gdi32.lib advapi32.lib
+
+%CXX% %LINKFLAGS% /Fepdfimages.exe Annot.obj Array.obj BuiltinFont.obj BuiltinFontTables.obj Catalog.obj CharCodeToUnicode.obj CMap.obj Decrypt.obj Dict.obj Error.obj FontEncodingTables.obj Function.obj Gfx.obj GfxFont.obj GfxState.obj GlobalParams.obj ImageOutputDev.obj JArithmeticDecoder.obj JBIG2Stream.obj JPXStream.obj Lexer.obj Link.obj NameToCharCode.obj Object.obj OptionalContent.obj Outline.obj OutputDev.obj Page.obj Parser.obj PDFDoc.obj PDFDocEncoding.obj PSTokenizer.obj SecurityHandler.obj Stream.obj UnicodeMap.obj XRef.obj pdfimages.obj ..\fofi\fofi.lib ..\goo\Goo.lib shell32.lib user32.lib gdi32.lib advapi32.lib
 
 cd ..
 
 rem --- This part will only work if you have FreeType installed ---
 
-set FT2DIR=..\freetype-2.3.1
-set CXXFLAGS=%CXXFLAGS% /I..\splash /I%FT2DIR%\include
+set FT2DIR=..\freetype-2.4.6
+set CXXFLAGS=%CXXFLAGS% /I%FT2DIR%\include
 
 cd splash
 %CXX% %CXXFLAGS% /c Splash.cc
@@ -113,6 +122,11 @@ cd ..\xpdf
 %CXX% %CXXFLAGS% /c SplashOutputDev.cc
 %CXX% %CXXFLAGS% /c pdftoppm.cc
 
-%CXX% %LINKFLAGS% /Fepdftoppm.exe Annot.obj Array.obj BuiltinFont.obj BuiltinFontTables.obj Catalog.obj CharCodeToUnicode.obj CMap.obj Decrypt.obj Dict.obj Error.obj FontEncodingTables.obj Function.obj Gfx.obj GfxFont.obj GfxState.obj GlobalParams.obj JArithmeticDecoder.obj JBIG2Stream.obj JPXStream.obj Lexer.obj Link.obj NameToCharCode.obj Object.obj Outline.obj OutputDev.obj Page.obj Parser.obj PDFDoc.obj PDFDocEncoding.obj PSTokenizer.obj SecurityHandler.obj SplashOutputDev.obj Stream.obj UnicodeMap.obj UnicodeTypeTable.obj XRef.obj pdftoppm.obj ..\splash\splash.lib ..\fofi\fofi.lib ..\goo\Goo.lib %FT2DIR%\freetype2.lib shell32.lib user32.lib gdi32.lib advapi32.lib
+%CXX% %LINKFLAGS% /Fepdftoppm.exe Annot.obj Array.obj BuiltinFont.obj BuiltinFontTables.obj Catalog.obj CharCodeToUnicode.obj CMap.obj Decrypt.obj Dict.obj Error.obj FontEncodingTables.obj Function.obj Gfx.obj GfxFont.obj GfxState.obj GlobalParams.obj JArithmeticDecoder.obj JBIG2Stream.obj JPXStream.obj Lexer.obj Link.obj NameToCharCode.obj Object.obj OptionalContent.obj Outline.obj OutputDev.obj Page.obj Parser.obj PDFDoc.obj PDFDocEncoding.obj PSTokenizer.obj SecurityHandler.obj SplashOutputDev.obj Stream.obj UnicodeMap.obj UnicodeTypeTable.obj XRef.obj pdftoppm.obj ..\splash\splash.lib ..\fofi\fofi.lib ..\goo\Goo.lib %FT2DIR%\freetype2.lib shell32.lib user32.lib gdi32.lib advapi32.lib
+
+rem --- Uncomment this line, and comment out the other pdftops build
+rem     line (see above) to build pdftops with the Splash rasterizer.
+rem     You'll also need to define HAVE_SPLASH in aconf-win32.h.
+rem %CXX% %LINKFLAGS% /Fepdftops.exe Annot.obj Array.obj BuiltinFont.obj BuiltinFontTables.obj Catalog.obj CharCodeToUnicode.obj CMap.obj Decrypt.obj Dict.obj Error.obj FontEncodingTables.obj Function.obj Gfx.obj GfxFont.obj GfxState.obj GlobalParams.obj JArithmeticDecoder.obj JBIG2Stream.obj JPXStream.obj Lexer.obj Link.obj NameToCharCode.obj Object.obj OptionalContent.obj Outline.obj OutputDev.obj Page.obj Parser.obj PDFDoc.obj PDFDocEncoding.obj PSOutputDev.obj PSTokenizer.obj PreScanOutputDev.obj SecurityHandler.obj SplashOutputDev.obj Stream.obj UnicodeMap.obj XRef.obj pdftops.obj ..\splash\splash.lib ..\fofi\fofi.lib ..\goo\Goo.lib %FT2DIR%\freetype2.lib shell32.lib user32.lib gdi32.lib advapi32.lib
 
 cd ..

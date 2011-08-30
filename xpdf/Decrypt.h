@@ -34,6 +34,7 @@ public:
   // may be NULL, which is treated as an empty string.
   static GBool makeFileKey(int encVersion, int encRevision, int keyLength,
 			   GString *ownerKey, GString *userKey,
+			   GString *ownerEnc, GString *userEnc,
 			   int permissions, GString *fileID,
 			   GString *ownerPassword, GString *userPassword,
 			   Guchar *fileKey, GBool encryptMetadata,
@@ -66,6 +67,14 @@ struct DecryptAESState {
   int bufIdx;
 };
 
+struct DecryptAES256State {
+  Guint w[60];
+  Guchar state[16];
+  Guchar cbc[16];
+  Guchar buf[16];
+  int bufIdx;
+};
+
 class DecryptStream: public FilterStream {
 public:
 
@@ -84,12 +93,19 @@ private:
 
   CryptAlgorithm algo;
   int objKeyLength;
-  Guchar objKey[16 + 9];
+  Guchar objKey[32];
 
   union {
     DecryptRC4State rc4;
     DecryptAESState aes;
+    DecryptAES256State aes256;
   } state;
 };
+
+//------------------------------------------------------------------------
+
+extern void rc4InitKey(Guchar *key, int keyLen, Guchar *state);
+extern Guchar rc4DecryptByte(Guchar *state, Guchar *x, Guchar *y, Guchar c);
+extern void md5(Guchar *msg, int msgLen, Guchar *digest);
 
 #endif

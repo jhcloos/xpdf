@@ -1760,3 +1760,390 @@ Use a custom string formatter to avoid problems with locale-based decimal
 Allow comments in PostScript-type functions.
 Change the TrueType font parser (FoFiTrueType) to delete glyf table
   entries that are too short.
+
+3.03 (2011-aug-15)
+------------------
+Added the "fixed pitch" text extraction mode.
+Modified "pdftops -paper match" to handle PDF files with
+  different-sized pages, i.e., it will now select the matching paper
+  size on a page-by-page basis.
+Add ability for pdftoppm to write to stdout.
+Added the pdfdetach tool.
+Implemented 256-bit AES decryption.
+Commented out the t1lib section in the configure script -- t1lib has
+  some potential security holes, and hasn't been updated in years.
+Redesigned the font configuration xpdfrc commands: removed the
+  displayFontT1, displayFontTT, displayNamedCIDFontT1,
+  displayCIDFontT1, displayNamedCIDFontTT, displayCIDFontTT, psFont,
+  psNamedFont16, and psFont16 commands; added the fontFile,
+  fontFileCC, psResidentFont, psResidentFont16, and psResidentFontCC
+  commands.
+Switched from GPLv2 to dual v2/v3 licensing.
+Performance: cache tiling patterns.
+Implemented text fills with pattern color spaces.
+Rewrote the image and image mask rendering code to be more accurate
+  and faster.
+Fixed a bug in PDFCore that could sometimes cause crashes at high zoom
+  levels.
+Implemented embedded CMap streams.
+Added the 'setSelection' command.
+Added the 'rotateCCW' and 'rotateCW' commands.
+Added the 'psFontPassthrough' xpdfrc command.
+Added the 'launchCommand' xpdfrc command.
+Implemented alpha-type soft masks.
+Added "Form: AcroForm|XFA|none" to pdfinfo output.
+Added support for image masks filled with pattern color spaces.
+Text search wasn't finding all occurrences of a string on rotated pages
+  (i.e., pages where the primary rotation, as displayed, was not
+  horizontal).
+The text extractor now uses "ActualText" spans if they are present.
+Modified PSOutputDev so it always check for transparency; if Splash is
+  not available, it now prints a warning.
+Handle the blending color space for soft masks.
+Added the disableFreeTypeHinting xpdfrc option.
+Added the psAlwaysRasterize xpdfrc option.
+Added support for transfer functions in the rasterizer.
+Optimized the JPEG 2000 decoder to use less memory.
+Do fill adjustment (similar to stroke adjustment) on simple
+  rectangular fills.
+Added the antialiasPrinting xpdfrc setting.
+Added '%i', '%j', and '%k' (mouse pointer page and position) to the
+  available options for the 'run' command.
+Links with the underlined border style were being drawn with the lines
+  over, instead of under, the text.
+Add #include <aconf.h> to XPDFTree.cc (to avoid problems with certain
+  compilers).
+Change XRef::fetch() to avoid infinite loops caused by odd damage to
+  the xref table (e.g., where a stream object's "Length" value is an
+  indirect reference that points to another stream object).
+Minor fix in GString.cc to deal with an error in newer C++ compilers
+  (pow() can take int or double args).
+Handle embedded fonts which are declared with the wrong font type,
+  including 8-bit fonts declared as CID fonts and vice versa; this
+  was causing various problems, including crashes and invalid
+  PostScript output.
+In text extractor, don't drop horizontally overlapping words onto a
+  separate line.
+The numbers in the operand to the TJ operator should be multiplied by
+  the current horizontal scaling parameter.
+Fixed a bug in the Type 1C-to-Type 1 font converter -- need to escape
+  strings in the font dictionary.
+The zero-font-size check in PSOutputDev.cc was broken.
+Fixes for the form field appearance regeneration code: handle Unicode
+  strings (by downconverting to Latin1); check for "True" in addition
+  to "Yes" as a button value.
+Modify XPDFTree to limit the widget height to 32767 pixels -- this
+  avoids crashes with very large outlines.
+Modify FoFiType1 to handle PFB headers in Type 1 font files.
+Allow image mask decode arrays to be [1.0 0.0] in addition to [1 0].
+Tweak the form field appearance regeneration code.
+PSOutputDev now sets up resources for DR dictionaries in forms (in
+  case the form field appearances are regenerated).
+For TrueType fonts which are marked symbolic, the cmaps should be
+  ignored.
+Change the handling of numeric characters in Unicode text output --
+  they are now treated as left-to-right, which isn't strictly correct,
+  but does result in correct visual formatting.
+Modify FoFiTrueType to handle bogus loca table entries where the
+  offset is past the end of the glyf table.
+Fixed shading pattern fills to do clipping and background fills
+  correctly.
+Change the code that reads the page tree to be more flexible with
+  regard to improperly constructed trees.
+Changed the PostScript header comment from "Produced by xpdf/pdftops
+  x.yy" to "XpdfVersion: x.yy" to make it (mostly) DSC-compliant.
+Fixed PSOutputDev to handle page rotation correctly where the PDF page
+  is rotated 90 or 270 degrees and the page width (before rotation) is
+  greater than its height (and vice versa for 0 or 180 degrees).
+Unbalanced save/restores inside form XObjects (which can be happen in
+  damaged or incorrectly constructed PDF files) could cause crashes.
+The CCITTFax decoder could go into an infinite loop on certain types
+  of corrupt input.
+Added the "drawAnnotations" xpdfrc command.
+Added the "psUncompressPreloadedImages" xpdfrc command.
+Escape newlines and other non-printable characters in the custom color
+  DSC comments in PostScript output.
+Added the tilingPatternFill and *ShadedFill functions to
+  PreScanOutputDev to speed it up.
+Too many elements in an image's Decode array should not be a fatal
+  error.
+Fixed a buffer overflow security hole in StreamPredictor.
+Empty pages (zero-length content streams and null contents) were
+  causing crashes in continuous view mode.
+Handle line dash arrays that start with a zero element correctly.
+PreScanOutputDev was not correctly detecting all transparency - in
+  some places, it was looking only at the blending mode, and not at
+  the opacity setting.
+Force halftone screen size to be a power of 2.  This allows optimizing
+  the halftoning code.
+Fixed a bug in the JBIG2 MMR decoder (and also in the CCITTFax
+  decoder) that was causing array references with negative indexes.
+Fixed a bug in the transparency code that was causing memory overruns.
+Fixed a 64-bit bug in the ASCII85 encoder.
+The focusToPageNum was crashing in full-screen mode - it should simply
+  do nothing.
+Added '%p' (current page number) to the available options for the 'run'
+  command.
+Tweak the behavior with PDF files that have pages of different widths
+  in continuous mode: scroll horizontally to avoid blank space on the
+  left side (when changing pages via entering a page number or
+  clicking on a link).
+A closepath followed by a lineto should create a new subpath for the
+  lineto.
+Fixed a buffer overflow in the CCITTFax decoder.
+Adobe Acrobat appears to ignore the flatness setting when rasterizing
+  curves, so Xpdf now does the same.  (Oddly, Acrobat passes the
+  flatness setting through to PostScript output, which ends up making
+  the PS file look different from the PDF file - so Xpdf continues to
+  pass flatness through to PS files, too.)
+Pdfimages now ignores tiling pattern fills (for performance reasons).
+Fixed a bug in PDFCore that could sometimes cause crashes at high zoom
+  levels.
+Use std::sort (with functors) in place of qsort (if available) - this
+  can be significantly faster.
+Hitting "close" while Xpdf is in full-screen mode (with only one file
+  open) was crashing.
+Tweak the TrueType font encoding deciphering algorithm.
+Rewrote the CCITTFax decoder inner loop - this fixes a security hole.
+Fixed two security holes (missing bounds checks) in the DCT decoder.
+Do the correct zooming for "Fit" and "FitR" destinations.
+Implement the rotation value in the form field appearance regeneration
+  code.
+When PSOutputDev rasterizes a page (because it contains transparency),
+  the image is broken into stripes if it is above a size threshold.
+Don't clip the other page boxes to the MediaBox at the intermediate
+  (Pages) nodes; only do it at the leaf (Page) nodes - the other boxes
+  can be specified before the MediaBox is specified.
+Split several special cases off from Splash::pipeRun, for performance.
+Add a sanity check for excessively large font sizes (which caused
+  problems because Xpdf tried to allocate memory for a font cache).
+Fixed a bug in the GfxCIDFont constructor involving reading the
+  vertical metrics.
+Rewrote the code that handles annotation transforms - it was not
+  handling non-rectangular transforms correctly.
+Tweak the Type 3 bbox code to allow some slack on the left/bottom
+  edges, as well as the top/right edges.
+Fixed a bug that was causing problems rendering Type 3 fonts to 1-bit
+  monochrome output.
+Handle the case where AES padding is invalid.
+Changed XRef::getNumObjects to return the number of used entries,
+  instead of the same value as returned by XRef::getSize().
+Ignore bogus entries in the TrueType table directory instead of
+  immediately giving up on the font.
+Fixed a bug in the radial shading code that could cause divide-by-zero
+  errors.
+Tweaked the TrueType font fixup code to deal with an extra zero entry
+  at the end of the loca table.
+Increased font cache sizes to improve performance.
+Tweaked the TrueType notdef kludge to skip the notdef glyph only if it
+  was caused by a character for which a Unicode/MacRoman mapping could
+  not be found.
+Added another font size sanity check, this time for Type 3 glyphs.
+Added initial support for optional content (layers) - no GUI yet.
+For CID fonts that specify the 'Adobe-Identity' or 'Adobe-UCS'
+  collection, use an identity mapping for char code-to-Unicode
+  conversion.
+Updated the error function to take a category argument, and to use
+  GString::format instead of printf; added an error callback.
+The PDF spec claims that names are limited to 127 chars, but Distiller
+  8 will produce longer names, and Acrobat 8 will accept longer names
+  -- Xpdf will now handle them, too.
+Change the Catalog code so it doesn't load the entire page tree at
+  startup (this only helps the command line tools - the viewer scans
+  all of the pages at startup).
+Clip opacity values to the range [0,1].
+Handle glyph names of the form 'unixxxx' (similar to Ann, Axx, etc.).
+Resolution of rasterized pages in PostScript output was not being
+  computed correctly (resulting in overly large images).
+Extend the mapUnknownCharNames config command to cover CID fonts.
+Zero-length segments in the middle of stroked paths were not being
+  handled correctly -- they should be completely ignored, except for
+  the special case of a zero-length path with round line caps.
+Various optimizations to the Splash rasterizer.
+Allow "Identity" and "Default" as the transfer function in soft masks.
+Tweaked the ToUnicode CMap parser to allow <00xx> char codes for 8-bit
+  fonts.
+TextPage::clear() was not clearing the lists of underlines and links.
+Changed the CCITTFax decoder to correctly handle the interaction
+  between the EndOfLine and EncodedByteAlign parameters.
+Fixed a bug where xpdf wouldn't go to a destination specified on the
+  command line, if continuous mode was enabled
+  (xpdf -cont file.pdf +foo).
+Fixed a bug in the FreeType interface code which was causing incorrect
+  positioning/sizing of characters.
+Tweaked the FreeType interface code - use 'light' hinting with Type 1
+  fonts (because it generally looks better).
+Tweak the Windows font searching code to handle "Black" fonts.
+Fixed a bug in the PostScript-type function parser -- real numbers
+  that start with a decimal point weren't being handled correctly.
+Changed the way filled-and-stroked text is handled -- use Splash to do
+  both the fill and the stroke (rather than using the font ending to
+  do the fill and Splash to do the stroke); also turn off stroke
+  adjustment when drawing stroked text.
+Ignore generation numbers on compressed objects (to match Adobe's
+  behavior).
+Changed the PostScript PageSize policy from 3 to 6 (choose next
+  largest paper size, don't rescale).
+Check that the mask values for color key masked images are in range --
+  both Ghostscript and Distiller choke on the PostScript if invalid
+  mask colors are specified.
+Fixed a bug in generic region decoding in the JBIG2 decoder.
+Fixed the lexer to handle large real numbers correctly.
+Pdftops wasn't correctly handling tiling patterns that use both fill
+  and stroke operators.
+Report an error if the Size array in a sampled function includes any
+  zeros.
+The PostScriptFunction.codeString field wasn't being initialized
+  correctly.
+Invalid object streams were not being handled correctly.
+Check for loops in xref tables.
+Handle the case where a content stream ends after the 'ID' operator
+  which starts inline image data.
+Check for invalid object streams (i.e., an object stream can't be
+  inside another object stream.
+Add a recursion limit to the object parser - this avoids stack
+  overflows with various sorts of damaged PDF files.
+Handle various parameter settings in the extended graphics state
+  dictionary.
+An invalid document outline (missing fields) could cause a crash.
+Added an overprint preview mode (for CMYK output only).
+Correctly handle FitH/BH/V/BV link destinations that contain null
+  values for positioning parameters.
+If the PDF file doesn't define a BaseURI, set one based on the
+  location of the PDF file -- this allows relative links to be handled
+  correctly.
+Use ResusableStreamDecode when generating Level 3 PostScript for an
+  explicitly masked image.
+Tweak the Type 1 font parser to handle encodings with multiple
+  characters on one line.
+Invert subtractive color components before passing them to the
+  blending function.
+Fix an invalid array access in SplashOutputDev::setSoftMask() in CMYK
+  mode.
+A PS interpreter may attempt to read past the end of a preloaded
+  image, so we need to check for that.
+Fixed several overflow/uninit bugs in JBIG2Stream.
+Fix the CCITTFax decoder to correctly find end-of-file (RTC/EOFB)
+  markers when the EndOfLine parameter is false.
+Don't limit the startxref offset to 10 digits - some PDF generators
+  use extra leading zeros.
+Use the "DV" (default value) field in text annotations if the "V"
+  (value) field is missing.
+Increase the number of digits printed for floating point numbers in
+  PostScript output -- it was running into numerical accuracy problems
+  on large pages.
+Fixed integer overflow bugs in Catalog.cc and GfxFont.cc.
+Zero-length tables in TrueType fonts should be treated as missing.
+ToUnicode CMaps map char codes to Unicode; .cidToUnicode files map
+  CIDs to Unicode -- ToUnicodeCMaps were being handled incorrectly.
+Added the "psRasterResolution" and "psRasterMono" xpdfrc commands.
+Added code to FoFiTrueType to check for entries in the table directory
+  with bogus tags -- this handles the case where the number of tables
+  given in the header is too high.
+Negative shift values in the PostScript bitshift operator were being
+  handled incorrectly.
+GfxICCBasedColorSpace was not correctly bounds-checking the number of
+  components.
+Check SampledFunction input values for NaNs.
+Fix a divide-by-zero when the page width or height is zero.
+Fix a bug positioning text in PostScript output - if the last char in
+  a string has an incorrect width in the PDF font object, that messes
+  up the total string width, so we have to position individual chars.
+In PostScript output, if CID font substitution fails, drop all text in
+  that font.
+Handle PDF files that set the stream/string decryption filters to
+  Identity (i.e., no encryption).
+Avoid passing a zero font size to FreeType.
+Tweak raw mode in the text extractor to handle words on the same line
+  drawn in the wrong order.
+Pdftops was generating a singular transform matrix for annotations
+  whose bounding boxes had zero width or height.
+Handle embedded OpenType CFF fonts with CIDToGIDMaps.
+Remove the old kludge from PSOutputDev that was converting char 32
+  from ".notdef" to "space".
+Allow CCITTFax images to be more than 32k pixels wide.
+Modified the CMap parser to handle usecmap with Identity-H/V.
+Added some parameter checking in the JPX decoder.
+Added checks for infinite loops in PDF objects - for color spaces,
+  functions, optional content, and outline items.  
+Add support for mouse button bindings up to button 32 (old limit was
+  7).
+Fixed a bug in the decryption code for revision 3 with keyLength < 16
+  -- the owner password was not being handled correctly.  [Thanks to
+  Matthias Franz.]
+Optimize SampledFunction: pull index computation code out of the
+  transform function; cache the last transform.
+Tweaked the font naming algorithm in PSOutputDev.
+Treat mirrored (as opposed to rotated) text the same as upright text
+  in pdftotext.
+Fixed buffer overflows in Splash and SplashBitmap.
+Check for bogus character codes (e.g., <ffffffff>) in ToUnicode CMaps.
+The radial shading code (in both Gfx.cc and PSOutputDev.cc) was not
+  computing the s bounds properly.
+Drop empty subpaths in clip and fill (but not stroke) operations -
+  this can significantly speed up clip performance in the weird case
+  where a PDF file does "<x> <y> <w> <h> re <x> <y> m h W n".
+Added code to FoFiTrueType to check for an invalid loca format field
+  in the head table.
+The axial shading code (in Gfx.cc, but not PSOutputDev.cc) was not
+  computing the incremental polygon vertices correctly.
+Set the character width in TextOutputDev to something sensible for
+  vertical fonts.
+Added basic support to the text extractor for vertical writing mode.
+The non-interactive tools (pdftotext, pdftops) now free Page objects
+  after using them, avoiding performance problems with pages that have
+  huge resource dictionaries.
+Check for line dash arrays like [0], and draw nothing at all (to match
+  Acrobat's behavior).
+Add a sanity check for the ascent/descent values in FontDescriptors.
+Single-point paths with a line dash were causing a crash.
+Correctly handle Level 3 PostScript output with masked images inside
+  patterns.
+Tweaked the xref repair code so that it runs if the catalog is messed
+  up (in addition to running if the xref table is damaged).
+If Indexed color space tables (streams or strings) are too small,
+  reduce the max index instead of throwing away the color space.
+Change the CMap parser to allocate memory only when it sees a mapping,
+  not when it sees a 'codespacerange' declaration -- this avoids
+  allocating huge amounts of memory for CMaps with large, unused
+  codespaceranges.
+In monochrome mode, treat lines with width <= 1 as hairlines (to match
+  Acrobat's behavior).
+Cache the last transform for PostScript-type functions.
+Added the "-rawdates" option to pdfinfo.
+Optimized ImageStream::getLine().
+Fixed the Hue, Saturation, Color, and Luminosity blend functions to
+  match Adobe's spec.
+Fixed the non-isolated group compositing computation.
+Skip extraneous unused data at the end of JBIG2 segments.
+Change the algorithm that stroke/fill adjustment uses so that the
+  edges of adjacent strokes/fills line up.
+Do stroke adjustment on end caps when cap style is butt or projecting.
+Fixed a security hole: Gfx.parser was not being initialized to NULL.
+Fixed a security hole: integer bounds check in the Type 1 encoding
+  parser in FoFiType1.cc.
+If an embedded font object is invalid or non-existent, do font
+  substitution (same as if there were no embedded font).
+TextOutputDev was reusing an old font in the case where the font
+  changed but the font size and character positioning stayed the same.
+When starting a transparency group, copy the fill/stroke colors from
+  the graphics state.
+Tweaked the fixed-point code.
+When a TrueType font is declared resident (with a psFont command),
+  don't munge the encoding.
+Look for URIs starting with "www." and treat them as absolute "http:"
+  URIs, not as relative URIs (to match Adobe's behavior).
+Added code to FoFiTrueType to check for a zero-entry cmap table.
+Tweaked the font substitution code to do a better job of scaling the
+  substituted font.
+Require at least two splits in the axial shading color bisection.
+Optimized JBIG2Stream::readGenericBitmap().
+JPXStream wasn't correctly handling row padding for images with fewer
+  than 8 bits per component.
+Optimized the ToUnicode CMap parser.
+Added a "whole words only" option to text searches.
+Check for valid component parameters in the DCT decoder.
+Implement embedding of external 16-bit fonts (without subsetting) in
+  PostScript output.
+Added the minLineWidth xpdfrc command.
+Added warning messages for font substitutions.

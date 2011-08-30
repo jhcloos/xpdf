@@ -84,6 +84,9 @@ public:
   Guint decodeIAID(Guint codeLen,
 		   JArithmeticDecoderStats *stats);
 
+  void resetByteCounter() { nBytesRead = 0; }
+  Guint getByteCounter() { return nBytesRead; }
+
 private:
 
   Guint readByte();
@@ -102,6 +105,7 @@ private:
   Guint prev;			// for the integer decoder
 
   Stream *str;
+  Guint nBytesRead;
   int dataLen;
   GBool limitStream;
 };

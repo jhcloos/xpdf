@@ -38,7 +38,7 @@ class TextPage;
 
 //------------------------------------------------------------------------
 
-typedef void (*TextOutputFunc)(void *stream, char *text, int len);
+typedef void (*TextOutputFunc)(void *stream, const char *text, int len);
 
 //------------------------------------------------------------------------
 // TextFontInfo
@@ -85,14 +85,15 @@ public:
 
   // Constructor.
   TextWord(GfxState *state, int rotA, double x0, double y0,
-	   int charPosA, TextFontInfo *fontA, double fontSize);
+	   TextFontInfo *fontA, double fontSize);
 
   // Destructor.
   ~TextWord();
 
   // Add a character to the word.
   void addChar(GfxState *state, double x, double y,
-	       double dx, double dy, Unicode u);
+	       double dx, double dy, int charPosA, int charLen,
+	       Unicode u);
 
   // Merge <word> onto the end of <this>.
   void merge(TextWord *word);
@@ -126,8 +127,8 @@ public:
 		   double *xMaxA, double *yMaxA);
   double getFontSize() { return fontSize; }
   int getRotation() { return rot; }
-  int getCharPos() { return charPos; }
-  int getCharLen() { return charLen; }
+  int getCharPos() { return charPos[0]; }
+  int getCharLen() { return charPos[len] - charPos[0]; }
   GBool getSpaceAfter() { return spaceAfter; }
 #endif
 
@@ -144,11 +145,11 @@ private:
   Unicode *text;		// the text
   double *edge;			// "near" edge x or y coord of each char
 				//   (plus one extra entry for the last char)
-  int len;			// length of text and edge arrays
-  int size;			// size of text and edge arrays
-  int charPos;                  // character position (within content stream)
-  int charLen;                  // number of content stream characters in
-                                //   this word
+  int *charPos;			// character position (within content stream)
+				//   of each char (plus one extra entry for
+				//   the last char)
+  int len;			// length of text/edge/charPos arrays
+  int size;			// size of text/edge/charPos arrays
   TextFontInfo *font;		// font information
   double fontSize;		// font size
   GBool spaceAfter;		// set if there is a space between this
@@ -280,7 +281,7 @@ public:
 
   void addWord(TextWord *word);
 
-  void coalesce(UnicodeMap *uMap);
+  void coalesce(UnicodeMap *uMap, double fixedPitch);
 
   // Update this block's priMin and priMax values, looking at <blk>.
   void updatePriMinMax(TextBlock *blk);
@@ -429,6 +430,15 @@ public:
 	       double dx, double dy,
 	       CharCode c, int nBytes, Unicode *u, int uLen);
 
+  // Add <nChars> invisible characters.
+  void incCharCount(int nChars);
+
+  // Begin/end an "ActualText" span, where the char indexes are
+  // supplied by a marked content operator rather than the text
+  // drawing operators.
+  void beginActualText(GfxState *state, Unicode *u, int uLen);
+  void endActualText(GfxState *state);
+
   // End the current word, sorting it into the list of words.
   void endWord();
 
@@ -442,7 +452,7 @@ public:
   void addLink(int xMin, int yMin, int xMax, int yMax, Link *link);
 
   // Coalesce strings that look like parts of the same line.
-  void coalesce(GBool physLayout, GBool doHTML);
+  void coalesce(GBool physLayout, double fixedPitch, GBool doHTML);
 
   // Find a string.  If <startAtTop> is true, starts looking at the
   // top of the page; else if <startAtLast> is true, starts looking
@@ -455,6 +465,7 @@ public:
 		 GBool startAtTop, GBool stopAtBottom,
 		 GBool startAtLast, GBool stopAtLast,
 		 GBool caseSensitive, GBool backward,
+		 GBool wholeWord,
 		 double *xMin, double *yMin,
 		 double *xMax, double *yMax);
 
@@ -502,6 +513,13 @@ private:
   int nTinyChars;		// number of "tiny" chars seen so far
   GBool lastCharOverlap;	// set if the last added char overlapped the
 				//   previous char
+  Unicode *actualText;		// current "ActualText" span
+  int actualTextLen;
+  double actualTextX0,
+         actualTextY0,
+         actualTextX1,
+         actualTextY1;
+  int actualTextNBytes;
 
   TextPool *pools[4];		// a "pool" of TextWords for each rotation
   TextFlow *flows;		// linked list of flows
@@ -544,14 +562,16 @@ public:
   // is maintained.  If <rawOrder> is true, the text is kept in
   // content stream order.
   TextOutputDev(char *fileName, GBool physLayoutA,
-		GBool rawOrderA, GBool append);
+		double fixedPitchA, GBool rawOrderA,
+		GBool append);
 
   // Create a TextOutputDev which will write to a generic stream.  If
   // <physLayoutA> is true, the original physical layout of the text
   // is maintained.  If <rawOrder> is true, the text is kept in
   // content stream order.
   TextOutputDev(TextOutputFunc func, void *stream,
-		GBool physLayoutA, GBool rawOrderA);
+		GBool physLayoutA, double fixedPitchA,
+		GBool rawOrderA);
 
   // Destructor.
   virtual ~TextOutputDev();
@@ -575,6 +595,10 @@ public:
   // Does this device need non-text content?
   virtual GBool needNonText() { return gFalse; }
 
+  // Does this device require incCharCount to be called for text on
+  // non-shown layers?
+  virtual GBool needCharCount() { return gTrue; }
+
   //----- initialization and control
 
   // Start a page.
@@ -582,6 +606,9 @@ public:
 
   // End a page.
   virtual void endPage();
+
+  //----- save/restore graphics state
+  virtual void restoreState(GfxState *state);
 
   //----- update text state
   virtual void updateFont(GfxState *state);
@@ -593,6 +620,9 @@ public:
 			double dx, double dy,
 			double originX, double originY,
 			CharCode c, int nBytes, Unicode *u, int uLen);
+  virtual void incCharCount(int nChars);
+  virtual void beginActualText(GfxState *state, Unicode *u, int uLen);
+  virtual void endActualText(GfxState *state);
 
   //----- path painting
   virtual void stroke(GfxState *state);
@@ -600,7 +630,7 @@ public:
   virtual void eoFill(GfxState *state);
 
   //----- link borders
-  virtual void processLink(Link *link, Catalog *catalog);
+  virtual void processLink(Link *link);
 
   //----- special access
 
@@ -615,6 +645,7 @@ public:
 		 GBool startAtTop, GBool stopAtBottom,
 		 GBool startAtLast, GBool stopAtLast,
 		 GBool caseSensitive, GBool backward,
+		 GBool wholeWord,
 		 double *xMin, double *yMin,
 		 double *xMax, double *yMax);
 
@@ -653,6 +684,9 @@ private:
   TextPage *text;		// text for the current page
   GBool physLayout;		// maintain original physical layout when
 				//   dumping text
+  double fixedPitch;		// if physLayout is true and this is non-zero,
+				//   assume fixed-pitch characters with this
+				//   width
   GBool rawOrder;		// keep text in content stream order
   GBool doHTML;			// extra processing for HTML conversion
   GBool ok;			// set up ok?

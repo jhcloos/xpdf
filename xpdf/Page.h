@@ -18,10 +18,10 @@
 #include "Object.h"
 
 class Dict;
+class PDFDoc;
 class XRef;
 class OutputDev;
 class Links;
-class Catalog;
 
 //------------------------------------------------------------------------
 
@@ -47,6 +47,10 @@ public:
   // (of type Pages or Page) into another PageAttrs object.  If
   // <attrs> is NULL, uses defaults.
   PageAttrs(PageAttrs *attrs, Dict *dict);
+
+  // Construct a new PageAttrs object for an empty page (only used
+  // when there is an error in the page tree).
+  PageAttrs();
 
   // Destructor.
   ~PageAttrs();
@@ -76,9 +80,12 @@ public:
   Dict *getResourceDict()
     { return resources.isDict() ? resources.getDict() : (Dict *)NULL; }
 
+  // Clip all other boxes to the MediaBox.
+  void clipBoxes();
+
 private:
 
-  GBool readBox(Dict *dict, char *key, PDFRectangle *box);
+  GBool readBox(Dict *dict, const char *key, PDFRectangle *box);
 
   PDFRectangle mediaBox;
   PDFRectangle cropBox;
@@ -104,7 +111,11 @@ class Page {
 public:
 
   // Constructor.
-  Page(XRef *xrefA, int numA, Dict *pageDict, PageAttrs *attrsA);
+  Page(PDFDoc *docA, int numA, Dict *pageDict, PageAttrs *attrsA);
+
+  // Create an empty page (only used when there is an error in the
+  // page tree).
+  Page(PDFDoc *docA, int numA);
 
   // Destructor.
   ~Page();
@@ -143,7 +154,7 @@ public:
   Object *getAnnots(Object *obj) { return annots.fetch(xref, obj); }
 
   // Return a list of links.
-  Links *getLinks(Catalog *catalog);
+  Links *getLinks();
 
   // Get contents.
   Object *getContents(Object *obj) { return contents.fetch(xref, obj); }
@@ -151,7 +162,7 @@ public:
   // Display a page.
   void display(OutputDev *out, double hDPI, double vDPI,
 	       int rotate, GBool useMediaBox, GBool crop,
-	       GBool printing, Catalog *catalog,
+	       GBool printing,
 	       GBool (*abortCheckCbk)(void *data) = NULL,
 	       void *abortCheckCbkData = NULL);
 
@@ -159,7 +170,7 @@ public:
   void displaySlice(OutputDev *out, double hDPI, double vDPI,
 		    int rotate, GBool useMediaBox, GBool crop,
 		    int sliceX, int sliceY, int sliceW, int sliceH,
-		    GBool printing, Catalog *catalog,
+		    GBool printing,
 		    GBool (*abortCheckCbk)(void *data) = NULL,
 		    void *abortCheckCbkData = NULL);
 
@@ -168,7 +179,7 @@ public:
 	       double sliceX, double sliceY, double sliceW, double sliceH,
 	       PDFRectangle *box, GBool *crop);
 
-  void processLinks(OutputDev *out, Catalog *catalog);
+  void processLinks(OutputDev *out);
 
   // Get the page's default CTM.
   void getDefaultCTM(double *ctm, double hDPI, double vDPI,
@@ -176,6 +187,7 @@ public:
 
 private:
 
+  PDFDoc *doc;
   XRef *xref;			// the xref table for this PDF file
   int num;			// page number
   PageAttrs *attrs;		// page attributes

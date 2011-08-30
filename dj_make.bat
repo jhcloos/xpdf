@@ -20,10 +20,11 @@ del libGoo.a
 cd ..\fofi
 %CXX% %CXXFLAGS% -c FoFiBase.cc
 %CXX% %CXXFLAGS% -c FoFiEncodings.cc
+%CXX% %CXXFLAGS% -c FoFiIdentifier.cc
 %CXX% %CXXFLAGS% -c FoFiTrueType.cc
 %CXX% %CXXFLAGS% -c FoFiType1.cc
 %CXX% %CXXFLAGS% -c FoFiType1C.cc
-%LIBPROG% -rc libfofi.a FoFiBase.o FoFiEncodings.o FoFiTrueType.o FoFiType1.o FoFiType1C.o
+%LIBPROG% -rc libfofi.a FoFiBase.o FoFiEncodings.o FoFiIdentifier.o FoFiTrueType.o FoFiType1.o FoFiType1C.o
 
 cd ..\xpdf
 del *.o
@@ -51,6 +52,7 @@ del *.o
 %CXX% %CXXFLAGS% -c Link.cc
 %CXX% %CXXFLAGS% -c NameToCharCode.cc
 %CXX% %CXXFLAGS% -c Object.cc
+%CXX% %CXXFLAGS% -c OptionalContent.cc
 %CXX% %CXXFLAGS% -c Outline.cc
 %CXX% %CXXFLAGS% -c OutputDev.cc
 %CXX% %CXXFLAGS% -c PDFDoc.cc
@@ -75,6 +77,8 @@ del libxpdf.a
 %CXX% %CXXFLAGS% -o pdfinfo.exe pdfinfo.cc libxpdf.a ..\fofi\libfofi.a ..\goo\libGoo.a
 
 %CXX% %CXXFLAGS% -o pdffonts.exe pdffonts.cc libxpdf.a ..\fofi\libfofi.a ..\goo\libGoo.a
+
+%CXX% %CXXFLAGS% -o pdfdetach.exe pdfdetach.cc libxpdf.a ..\fofi\libfofi.a ..\goo\libGoo.a
 
 %CXX% %CXXFLAGS% -o pdfimages.exe pdfimages.cc libxpdf.a ..\fofi\libfofi.a ..\goo\libGoo.a
 

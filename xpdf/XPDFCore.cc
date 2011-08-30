@@ -276,13 +276,13 @@ void XPDFCore::resizeToPage(int pg) {
 }
 
 void XPDFCore::update(int topPageA, int scrollXA, int scrollYA,
-		      double zoomA, int rotateA,
-		      GBool force, GBool addToHist) {
+		      double zoomA, int rotateA, GBool force,
+		      GBool addToHist, GBool adjustScrollX) {
   int oldPage;
 
   oldPage = topPage;
   PDFCore::update(topPageA, scrollXA, scrollYA, zoomA, rotateA,
-		  force, addToHist);
+		  force, addToHist, adjustScrollX);
   linkAction = NULL;
   if (doc && topPage != oldPage) {
     if (updateCbk) {
@@ -387,7 +387,8 @@ void XPDFCore::endSelection(int wx, int wy) {
 	if (doc->okToCopy()) {
 	  copySelection();
 	} else {
-	  error(-1, "Copying of text from this document is not allowed.");
+	  error(errNotAllowed, -1,
+		"Copying of text from this document is not allowed.");
 	}
       }
 #endif
@@ -554,20 +555,26 @@ void XPDFCore::doAction(LinkAction *action) {
 #else
       fileName->append(" &");
 #endif
-      msg = new GString("About to execute the command:\n");
-      msg->append(fileName);
-      if (doQuestionDialog("Launching external application", msg)) {
+      if (globalParams->getLaunchCommand()) {
+	fileName->insert(0, ' ');
+	fileName->insert(0, globalParams->getLaunchCommand());
 	system(fileName->getCString());
+      } else {
+	msg = new GString("About to execute the command:\n");
+	msg->append(fileName);
+	if (doQuestionDialog("Launching external application", msg)) {
+	  system(fileName->getCString());
+	}
+	delete msg;
       }
       delete fileName;
-      delete msg;
     }
     break;
 
   // URI action
   case actionURI:
     if (!(cmd = globalParams->getURLCommand())) {
-      error(-1, "No urlCommand defined in config file");
+      error(errConfig, -1, "No urlCommand defined in config file");
       break;
     }
     runCommand(cmd, ((LinkURI *)action)->getURI());
@@ -597,14 +604,15 @@ void XPDFCore::doAction(LinkAction *action) {
 	(*actionCbk)(actionCbkData, actionName->getCString());
       }
     } else {
-      error(-1, "Unknown named action: '%s'", actionName->getCString());
+      error(errSyntaxError, -1,
+	    "Unknown named action: '{0:t}'", actionName);
     }
     break;
 
   // Movie action
   case actionMovie:
     if (!(cmd = globalParams->getMovieCommand())) {
-      error(-1, "No movieCommand defined in config file");
+      error(errConfig, -1, "No movieCommand defined in config file");
       break;
     }
     if (((LinkMovie *)action)->hasAnnotRef()) {
@@ -652,8 +660,8 @@ void XPDFCore::doAction(LinkAction *action) {
 
   // unknown action type
   case actionUnknown:
-    error(-1, "Unknown link action type: '%s'",
-	  ((LinkUnknown *)action)->getAction()->getCString());
+    error(errSyntaxError, -1, "Unknown link action type: '{0:t}'",
+	  ((LinkUnknown *)action)->getAction());
     break;
   }
 }
@@ -686,10 +694,10 @@ void XPDFCore::runCommand(GString *cmdFmt, GString *arg) {
 // Escape any characters in a URL which might cause problems when
 // calling system().
 GString *XPDFCore::mungeURL(GString *url) {
-  static char *allowed = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-                         "abcdefghijklmnopqrstuvwxyz"
-                         "0123456789"
-                         "-_.~/?:@&=+,#%";
+  static const char *allowed = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+                               "abcdefghijklmnopqrstuvwxyz"
+                               "0123456789"
+                               "-_.~/?:@&=+,#%";
   GString *newURL;
   char c;
   char buf[4];
@@ -712,9 +720,10 @@ GString *XPDFCore::mungeURL(GString *url) {
 // find
 //------------------------------------------------------------------------
 
-GBool XPDFCore::find(char *s, GBool caseSensitive,
-		     GBool next, GBool backward, GBool onePageOnly) {
-  if (!PDFCore::find(s, caseSensitive, next, backward, onePageOnly)) {
+GBool XPDFCore::find(char *s, GBool caseSensitive, GBool next,
+		     GBool backward, GBool wholeWord, GBool onePageOnly) {
+  if (!PDFCore::find(s, caseSensitive, next,
+		     backward, wholeWord, onePageOnly)) {
     XBell(display, 0);
     return gFalse;
   }
@@ -725,8 +734,10 @@ GBool XPDFCore::find(char *s, GBool caseSensitive,
 }
 
 GBool XPDFCore::findU(Unicode *u, int len, GBool caseSensitive,
-		      GBool next, GBool backward, GBool onePageOnly) {
-  if (!PDFCore::findU(u, len, caseSensitive, next, backward, onePageOnly)) {
+		      GBool next, GBool backward,
+		      GBool wholeWord, GBool onePageOnly) {
+  if (!PDFCore::findU(u, len, caseSensitive, next,
+		      backward, wholeWord, onePageOnly)) {
     XBell(display, 0);
     return gFalse;
   }
@@ -961,7 +972,7 @@ void XPDFCore::initWindow() {
 }
 
 void XPDFCore::hScrollChangeCbk(Widget widget, XtPointer ptr,
-			     XtPointer callData) {
+				XtPointer callData) {
   XPDFCore *core = (XPDFCore *)ptr;
   XmScrollBarCallbackStruct *data = (XmScrollBarCallbackStruct *)callData;
 
@@ -1034,7 +1045,8 @@ void XPDFCore::resizeCbk(Widget widget, XtPointer ptr, XtPointer callData) {
     sx = core->scrollX;
     sy = core->scrollY;
   }
-  core->update(core->topPage, sx, sy, core->zoom, core->rotate, gTrue, gFalse);
+  core->update(core->topPage, sx, sy, core->zoom, core->rotate, gTrue, gFalse,
+	       gFalse);
 }
 
 void XPDFCore::redrawCbk(Widget widget, XtPointer ptr, XtPointer callData) {
@@ -1062,7 +1074,7 @@ void XPDFCore::inputCbk(Widget widget, XtPointer ptr, XtPointer callData) {
   LinkAction *action;
   int pg, x, y;
   double xu, yu;
-  char *s;
+  const char *s;
   KeySym key;
   GBool ok;
 
@@ -1170,7 +1182,7 @@ void XPDFCore::updateTileData(PDFCoreTile *tileA, int xSrc, int ySrc,
     w = tile->xMax - tile->xMin;
     h = tile->yMax - tile->yMin;
     image = XCreateImage(display, visual, depth, ZPixmap, 0, NULL, w, h, 8, 0);
-    image->data = (char *)gmalloc(h * image->bytes_per_line);
+    image->data = (char *)gmallocn(h, image->bytes_per_line);
     tile->image = image;
   } else {
     image = (XImage *)tile->image;
@@ -1410,20 +1422,20 @@ void XPDFCore::setCursor(Cursor cursor) {
   currentCursor = cursor;
 }
 
-GBool XPDFCore::doQuestionDialog(char *title, GString *msg) {
+GBool XPDFCore::doQuestionDialog(const char *title, GString *msg) {
   return doDialog(XmDIALOG_QUESTION, gTrue, title, msg);
 }
 
-void XPDFCore::doInfoDialog(char *title, GString *msg) {
+void XPDFCore::doInfoDialog(const char *title, GString *msg) {
   doDialog(XmDIALOG_INFORMATION, gFalse, title, msg);
 }
 
-void XPDFCore::doErrorDialog(char *title, GString *msg) {
+void XPDFCore::doErrorDialog(const char *title, GString *msg) {
   doDialog(XmDIALOG_ERROR, gFalse, title, msg);
 }
 
 GBool XPDFCore::doDialog(int type, GBool hasCancel,
-			 char *title, GString *msg) {
+			 const char *title, GString *msg) {
   Widget dialog, scroll, text;
   XtAppContext appContext;
   Arg args[20];
@@ -1434,7 +1446,7 @@ GBool XPDFCore::doDialog(int type, GBool hasCancel,
   n = 0;
   XtSetArg(args[n], XmNdialogType, type); ++n;
   XtSetArg(args[n], XmNdialogStyle, XmDIALOG_PRIMARY_APPLICATION_MODAL); ++n;
-  s1 = XmStringCreateLocalized(title);
+  s1 = XmStringCreateLocalized((char *)title);
   XtSetArg(args[n], XmNdialogTitle, s1); ++n;
   s2 = NULL; // make gcc happy
   if (msg->getLength() <= 80) {

@@ -39,14 +39,14 @@ GBool parseArgs(ArgDesc *args, int *argc, char *argv[]) {
   return ok;
 }
 
-void printUsage(char *program, char *otherArgs, ArgDesc *args) {
+void printUsage(const char *program, const char *otherArgs, ArgDesc *args) {
   ArgDesc *arg;
   char *typ;
   int w, w1;
 
   w = 0;
   for (arg = args; arg->arg; ++arg) {
-    if ((w1 = strlen(arg->arg)) > w)
+    if ((w1 = (int)strlen(arg->arg)) > w)
       w = w1;
   }
 
@@ -57,7 +57,7 @@ void printUsage(char *program, char *otherArgs, ArgDesc *args) {
 
   for (arg = args; arg->arg; ++arg) {
     fprintf(stderr, "  %s", arg->arg);
-    w1 = 9 + w - strlen(arg->arg);
+    w1 = 9 + w - (int)strlen(arg->arg);
     switch (arg->kind) {
     case argInt:
     case argIntDummy:

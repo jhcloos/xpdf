@@ -33,9 +33,9 @@ public:
 
   // Load fonts.
   SplashFontFile *loadType1Font(SplashFontFileID *idA, char *fileName,
-				GBool deleteFile, char **enc);
+				GBool deleteFile, const char **enc);
   SplashFontFile *loadType1CFont(SplashFontFileID *idA, char *fileName,
-				 GBool deleteFile, char **enc);
+				 GBool deleteFile, const char **enc);
 
 private:
 

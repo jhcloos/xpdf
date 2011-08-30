@@ -29,7 +29,7 @@ GList::GList() {
 }
 
 GList::GList(int sizeA) {
-  size = sizeA;
+  size = sizeA ? sizeA : 8;
   data = (void **)gmallocn(size, sizeof(void*));
   length = 0;
   inc = 0;
@@ -37,6 +37,16 @@ GList::GList(int sizeA) {
 
 GList::~GList() {
   gfree(data);
+}
+
+GList *GList::copy() {
+  GList *ret;
+
+  ret = new GList(length);
+  ret->length = length;
+  memcpy(ret->data, data, length * sizeof(void *));
+  ret->inc = inc;
+  return ret;
 }
 
 void GList::append(void *p) {
@@ -61,6 +71,9 @@ void GList::insert(int i, void *p) {
   if (length >= size) {
     expand();
   }
+  if (i < 0) {
+    i = 0;
+  }
   if (i < length) {
     memmove(data+i+1, data+i, (length - i) * sizeof(void *));
   }
@@ -84,6 +97,18 @@ void *GList::del(int i) {
 
 void GList::sort(int (*cmp)(const void *obj1, const void *obj2)) {
   qsort(data, length, sizeof(void *), cmp);
+}
+
+void GList::reverse() {
+  void *t;
+  int n, i;
+
+  n = length / 2;
+  for (i = 0; i < n; ++i) {
+    t = data[i];
+    data[i] = data[length - 1 - i];
+    data[length - 1 - i] = t;
+  }
 }
 
 void GList::expand() {

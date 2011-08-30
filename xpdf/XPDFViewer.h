@@ -46,7 +46,7 @@ class XPDFViewer;
 //------------------------------------------------------------------------
 
 struct XPDFViewerCmd {
-  char *name;
+  const char *name;
   int nArgs;
   GBool requiresDoc;
   GBool requiresEvent;
@@ -143,6 +143,8 @@ private:
   void cmdRaise(GString *args[], int nArgs, XEvent *event);
   void cmdRedraw(GString *args[], int nArgs, XEvent *event);
   void cmdReload(GString *args[], int nArgs, XEvent *event);
+  void cmdRotateCCW(GString *args[], int nArgs, XEvent *event);
+  void cmdRotateCW(GString *args[], int nArgs, XEvent *event);
   void cmdRun(GString *args[], int nArgs, XEvent *event);
   void cmdScrollDown(GString *args[], int nArgs, XEvent *event);
   void cmdScrollDownNextPage(GString *args[], int nArgs, XEvent *event);
@@ -158,6 +160,7 @@ private:
   void cmdScrollToTopLeft(GString *args[], int nArgs, XEvent *event);
   void cmdScrollUp(GString *args[], int nArgs, XEvent *event);
   void cmdScrollUpPrevPage(GString *args[], int nArgs, XEvent *event);
+  void cmdSetSelection(GString *args[], int nArgs, XEvent *event);
   void cmdSinglePageMode(GString *args[], int nArgs, XEvent *event);
   void cmdStartPan(GString *args[], int nArgs, XEvent *event);
   void cmdStartSelection(GString *args[], int nArgs, XEvent *event);
@@ -238,7 +241,7 @@ private:
   static void pageNumCbk(Widget widget, XtPointer ptr,
 			 XtPointer callData);
   static void updateCbk(void *data, GString *fileName,
-			int pageNum, int numPages, char *linkString);
+			int pageNum, int numPages, const char *linkString);
 
   //----- GUI code: outline
 #ifndef DISABLE_OUTLINE
@@ -337,6 +340,7 @@ private:
   Widget findText;
   Widget findBackwardToggle;
   Widget findCaseSensitiveToggle;
+  Widget findWholeWordToggle;
 
   Widget saveAsDialog;
 

@@ -40,7 +40,8 @@ public:
   virtual void close();
   virtual int getChar();
   virtual int lookChar();
-  virtual GString *getPSFilter(int psLevel, char *indent);
+  virtual int getBlock(char *blk, int size);
+  virtual GString *getPSFilter(int psLevel, const char *indent);
   virtual GBool isBinary(GBool last = gTrue);
 
 private:
@@ -78,6 +79,10 @@ private:
 			     Guint *refSegs, Guint nRefSegs);
   void readGenericRegionSeg(Guint segNum, GBool imm,
 			    GBool lossless, Guint length);
+  void mmrAddPixels(int a1, int blackPixels,
+		    int *codingLine, int *a0i, int w);
+  void mmrAddPixelsNeg(int a1, int blackPixels,
+		       int *codingLine, int *a0i, int w);
   JBIG2Bitmap *readGenericBitmap(GBool mmr, int w, int h,
 				 int templ, GBool tpgdOn,
 				 GBool useSkip, JBIG2Bitmap *skip,
@@ -120,6 +125,7 @@ private:
   Stream *curStr;
   Guchar *dataPtr;
   Guchar *dataEnd;
+  Guint byteCounter;
 
   JArithmeticDecoder *arithDecoder;
   JArithmeticDecoderStats *genericRegionStats;

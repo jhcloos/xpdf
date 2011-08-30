@@ -45,8 +45,9 @@ UnicodeMap *UnicodeMap::parse(GString *encodingNameA) {
   char *tok1, *tok2, *tok3;
 
   if (!(f = globalParams->getUnicodeMapFile(encodingNameA))) {
-    error(-1, "Couldn't find unicodeMap file for the '%s' encoding",
-	  encodingNameA->getCString());
+    error(errSyntaxError, -1,
+	  "Couldn't find unicodeMap file for the '{0:t}' encoding",
+	  encodingNameA);
     return NULL;
   }
 
@@ -64,7 +65,7 @@ UnicodeMap *UnicodeMap::parse(GString *encodingNameA) {
 	tok3 = tok2;
 	tok2 = tok1;
       }
-      nBytes = strlen(tok3) / 2;
+      nBytes = (int)strlen(tok3) / 2;
       if (nBytes <= 4) {
 	if (map->len == size) {
 	  size *= 2;
@@ -92,12 +93,14 @@ UnicodeMap *UnicodeMap::parse(GString *encodingNameA) {
 	eMap->nBytes = nBytes;
 	++map->eMapsLen;
       } else {
-	error(-1, "Bad line (%d) in unicodeMap file for the '%s' encoding",
-	      line, encodingNameA->getCString());
+	error(errSyntaxError, -1,
+	      "Bad line ({0:d}) in unicodeMap file for the '{1:t}' encoding",
+	      line, encodingNameA);
       }
     } else {
-      error(-1, "Bad line (%d) in unicodeMap file for the '%s' encoding",
-	    line, encodingNameA->getCString());
+      error(errSyntaxError, -1,
+	    "Bad line ({0:d}) in unicodeMap file for the '{1:t}' encoding",
+	    line, encodingNameA);
     }
     ++line;
   }
@@ -121,7 +124,7 @@ UnicodeMap::UnicodeMap(GString *encodingNameA) {
 #endif
 }
 
-UnicodeMap::UnicodeMap(char *encodingNameA, GBool unicodeOutA,
+UnicodeMap::UnicodeMap(const char *encodingNameA, GBool unicodeOutA,
 		       UnicodeMapRange *rangesA, int lenA) {
   encodingName = new GString(encodingNameA);
   unicodeOut = unicodeOutA;
@@ -136,7 +139,7 @@ UnicodeMap::UnicodeMap(char *encodingNameA, GBool unicodeOutA,
 #endif
 }
 
-UnicodeMap::UnicodeMap(char *encodingNameA, GBool unicodeOutA,
+UnicodeMap::UnicodeMap(const char *encodingNameA, GBool unicodeOutA,
 		       UnicodeMapFunc funcA) {
   encodingName = new GString(encodingNameA);
   unicodeOut = unicodeOutA;

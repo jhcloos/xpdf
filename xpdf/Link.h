@@ -110,8 +110,10 @@ private:
   double left, bottom;		// position
   double right, top;
   double zoom;			// zoom factor
-  GBool changeLeft, changeTop;	// for destXYZ links, which position
-  GBool changeZoom;		//   components to change
+  GBool changeLeft, changeTop;	// which position components to change:
+  GBool changeZoom;		//   destXYZ uses all three;
+				//   destFitH/BH use changeTop;
+				//   destFitV/BV use changeLeft
   GBool ok;			// set if created successfully
 
   LinkDest(LinkDest *dest);

@@ -12,6 +12,9 @@
 
 #include <stdlib.h>
 #include <string.h>
+#if HAVE_STD_SORT
+#include <algorithm>
+#endif
 #include "gmem.h"
 #include "SplashMath.h"
 #include "SplashScreen.h"
@@ -34,9 +37,21 @@ struct SplashScreenPoint {
   int dist;
 };
 
+#if HAVE_STD_SORT
+
+struct cmpDistancesFunctor {
+  bool operator()(const SplashScreenPoint &p0, const SplashScreenPoint &p1) {
+    return p0.dist < p1.dist;
+  }
+};
+
+#else // HAVE_STD_SORT
+
 static int cmpDistances(const void *p0, const void *p1) {
   return ((SplashScreenPoint *)p0)->dist - ((SplashScreenPoint *)p1)->dist;
 }
+
+#endif
 
 //------------------------------------------------------------------------
 // SplashScreen
@@ -48,43 +63,40 @@ static int cmpDistances(const void *p0, const void *p1) {
 // threshold matrix using recursive tesselation.  Gamma correction
 // (gamma = 1 / 1.33) is also computed here.
 SplashScreen::SplashScreen(SplashScreenParams *params) {
-  Guchar u, black, white;
-  int i;
+  Guchar u;
+  int black, white, i;
 
   if (!params) {
     params = &defaultParams;
   }
 
+  // size must be a power of 2, and at least 2
+  for (size = 2, log2Size = 1; size < params->size; size <<= 1, ++log2Size) ;
+
   switch (params->type) {
 
   case splashScreenDispersed:
-    // size must be a power of 2
-    for (size = 1; size < params->size; size <<= 1) ;
     mat = (Guchar *)gmallocn(size * size, sizeof(Guchar));
     buildDispersedMatrix(size/2, size/2, 1, size/2, 1);
     break;
 
   case splashScreenClustered:
-    // size must be even
-    size = (params->size >> 1) << 1;
-    if (size < 2) {
-      size = 2;
-    }
     mat = (Guchar *)gmallocn(size * size, sizeof(Guchar));
     buildClusteredMatrix();
     break;
 
   case splashScreenStochasticClustered:
     // size must be at least 2*r
-    if (params->size < 2 * params->dotRadius) {
-      size = 2 * params->dotRadius;
-    } else {
-      size = params->size;
+    while (size < (params->dotRadius << 1)) {
+      size <<= 1;
+      ++log2Size;
     }
     mat = (Guchar *)gmallocn(size * size, sizeof(Guchar));
     buildSCDMatrix(params->dotRadius);
     break;
   }
+
+  sizeM1 = size - 1;
 
   // do gamma correction and compute minVal/maxVal
   minVal = 255;
@@ -101,9 +113,9 @@ SplashScreen::SplashScreen(SplashScreenParams *params) {
     u = splashRound((SplashCoord)255.0 *
 		    splashPow((SplashCoord)mat[i] / 255.0, params->gamma));
     if (u < black) {
-      u = black;
+      u = (Guchar)black;
     } else if (u >= white) {
-      u = white;
+      u = (Guchar)white;
     }
     mat[i] = u;
     if (u < minVal) {
@@ -118,7 +130,7 @@ void SplashScreen::buildDispersedMatrix(int i, int j, int val,
 					int delta, int offset) {
   if (delta == 0) {
     // map values in [1, size^2] --> [1, 255]
-    mat[i * size + j] = 1 + (254 * (val - 1)) / (size * size - 1);
+    mat[(i << log2Size) + j] = 1 + (254 * (val - 1)) / (size * size - 1);
   } else {
     buildDispersedMatrix(i, j,
 			 val, delta / 2, 4*offset);
@@ -142,7 +154,7 @@ void SplashScreen::buildClusteredMatrix() {
   // initialize the threshold matrix
   for (y = 0; y < size; ++y) {
     for (x = 0; x < size; ++x) {
-      mat[y * size + x] = 0;
+      mat[(y << log2Size) + x] = 0;
     }
   }
 
@@ -174,14 +186,12 @@ void SplashScreen::buildClusteredMatrix() {
   }
 
   // build the threshold matrix
-  minVal = 1;
-  maxVal = 0;
   x1 = y1 = 0; // make gcc happy
   for (i = 0; i < size * size2; ++i) {
     d = -1;
     for (y = 0; y < size; ++y) {
       for (x = 0; x < size2; ++x) {
-	if (mat[y * size + x] == 0 &&
+	if (mat[(y << log2Size) + x] == 0 &&
 	    dist[y * size2 + x] > d) {
 	  x1 = x;
 	  y1 = y;
@@ -191,12 +201,12 @@ void SplashScreen::buildClusteredMatrix() {
     }
     // map values in [0, 2*size*size2-1] --> [1, 255]
     val = 1 + (254 * (2*i)) / (2*size*size2 - 1);
-    mat[y1 * size + x1] = val;
+    mat[(y1 << log2Size) + x1] = val;
     val = 1 + (254 * (2*i+1)) / (2*size*size2 - 1);
     if (y1 < size2) {
-      mat[(y1 + size2) * size + x1 + size2] = val;
+      mat[((y1 + size2) << log2Size) + x1 + size2] = val;
     } else {
-      mat[(y1 - size2) * size + x1 + size2] = val;
+      mat[((y1 - size2) << log2Size) + x1 + size2] = val;
     }
   }
 
@@ -264,7 +274,7 @@ void SplashScreen::buildSCDMatrix(int r) {
   grid = (char *)gmallocn(size * size, sizeof(char));
   for (y = 0; y < size; ++y) {
     for (x = 0; x < size; ++x) {
-      grid[y*size + x] = 0;
+      grid[(y << log2Size) + x] = 0;
     }
   }
 
@@ -275,7 +285,7 @@ void SplashScreen::buildSCDMatrix(int r) {
   for (i = 0; i < size * size; ++i) {
     x = pts[i].x;
     y = pts[i].y;
-    if (!grid[y*size + x]) {
+    if (!grid[(y << log2Size) + x]) {
       if (dotsLen == dotsSize) {
 	dotsSize *= 2;
 	dots = (SplashScreenPoint *)greallocn(dots, dotsSize,
@@ -289,10 +299,10 @@ void SplashScreen::buildSCDMatrix(int r) {
 	  if (tmpl[yy*(r+1) + xx]) {
 	    x0 = (x + xx) % size;
 	    x1 = (x - xx + size) % size;
-	    grid[y0*size + x0] = 1;
-	    grid[y0*size + x1] = 1;
-	    grid[y1*size + x0] = 1;
-	    grid[y1*size + x1] = 1;
+	    grid[(y0 << log2Size) + x0] = 1;
+	    grid[(y0 << log2Size) + x1] = 1;
+	    grid[(y1 << log2Size) + x0] = 1;
+	    grid[(y1 << log2Size) + x1] = 1;
 	  }
 	}
       }
@@ -316,8 +326,8 @@ void SplashScreen::buildSCDMatrix(int r) {
 	  dMin = d;
 	}
       }
-      region[y*size + x] = iMin;
-      dist[y*size + x] = dMin;
+      region[(y << log2Size) + x] = iMin;
+      dist[(y << log2Size) + x] = dMin;
     }
   }
 
@@ -326,7 +336,7 @@ void SplashScreen::buildSCDMatrix(int r) {
     n = 0;
     for (y = 0; y < size; ++y) {
       for (x = 0; x < size; ++x) {
-	if (region[y*size + x] == i) {
+	if (region[(y << log2Size) + x] == i) {
 	  pts[n].x = x;
 	  pts[n].y = y;
 	  pts[n].dist = distance(dots[i].x, dots[i].y, x, y);
@@ -334,10 +344,14 @@ void SplashScreen::buildSCDMatrix(int r) {
 	}
       }
     }
+#if HAVE_STD_SORT
+    std::sort(pts, pts + n, cmpDistancesFunctor());
+#else
     qsort(pts, n, sizeof(SplashScreenPoint), &cmpDistances);
+#endif
     for (j = 0; j < n; ++j) {
       // map values in [0 .. n-1] --> [255 .. 1]
-      mat[pts[j].y * size + pts[j].x] = 255 - (254 * j) / (n - 1);
+      mat[(pts[j].y << log2Size) + pts[j].x] = 255 - (254 * j) / (n - 1);
     }
   }
 
@@ -350,6 +364,8 @@ void SplashScreen::buildSCDMatrix(int r) {
 
 SplashScreen::SplashScreen(SplashScreen *screen) {
   size = screen->size;
+  sizeM1 = screen->sizeM1;
+  log2Size = screen->log2Size;
   mat = (Guchar *)gmallocn(size * size, sizeof(Guchar));
   memcpy(mat, screen->mat, size * size * sizeof(Guchar));
   minVal = screen->minVal;
@@ -358,26 +374,4 @@ SplashScreen::SplashScreen(SplashScreen *screen) {
 
 SplashScreen::~SplashScreen() {
   gfree(mat);
-}
-
-int SplashScreen::test(int x, int y, Guchar value) {
-  int xx, yy;
-
-  if (value < minVal) {
-    return 0;
-  }
-  if (value >= maxVal) {
-    return 1;
-  }
-  if ((xx = x % size) < 0) {
-    xx = -xx;
-  }
-  if ((yy = y % size) < 0) {
-    yy = -yy;
-  }
-  return value < mat[yy * size + xx] ? 0 : 1;
-}
-
-GBool SplashScreen::isStatic(Guchar value) {
-  return value < minVal || value >= maxVal;
 }

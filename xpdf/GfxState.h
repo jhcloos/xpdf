@@ -109,6 +109,8 @@ struct GfxCMYK {
   GfxColorComp c, m, y, k;
 };
 
+
+
 //------------------------------------------------------------------------
 // GfxColorSpace
 //------------------------------------------------------------------------
@@ -138,7 +140,7 @@ public:
   virtual GfxColorSpaceMode getMode() = 0;
 
   // Construct a color space.  Returns NULL if unsuccessful.
-  static GfxColorSpace *parse(Object *csObj);
+  static GfxColorSpace *parse(Object *csObj, int recursion = 0);
 
   // Convert to gray, RGB, or CMYK.
   virtual void getGray(GfxColor *color, GfxGray *gray) = 0;
@@ -160,13 +162,18 @@ public:
   // mark the page (e.g., the "None" colorant).
   virtual GBool isNonMarking() { return gFalse; }
 
+  // Return the color space's overprint mask.
+  Guint getOverprintMask() { return overprintMask; }
+
   // Return the number of color space modes
   static int getNumColorSpaceModes();
 
   // Return the name of the <idx>th color space mode.
-  static char *getColorSpaceModeName(int idx);
+  static const char *getColorSpaceModeName(int idx);
 
-private:
+protected:
+
+  Guint overprintMask;
 };
 
 //------------------------------------------------------------------------
@@ -204,7 +211,7 @@ public:
   virtual GfxColorSpaceMode getMode() { return csCalGray; }
 
   // Construct a CalGray color space.  Returns NULL if unsuccessful.
-  static GfxColorSpace *parse(Array *arr);
+  static GfxColorSpace *parse(Array *arr, int recursion);
 
   virtual void getGray(GfxColor *color, GfxGray *gray);
   virtual void getRGB(GfxColor *color, GfxRGB *rgb);
@@ -264,7 +271,7 @@ public:
   virtual GfxColorSpaceMode getMode() { return csCalRGB; }
 
   // Construct a CalRGB color space.  Returns NULL if unsuccessful.
-  static GfxColorSpace *parse(Array *arr);
+  static GfxColorSpace *parse(Array *arr, int recursion);
 
   virtual void getGray(GfxColor *color, GfxGray *gray);
   virtual void getRGB(GfxColor *color, GfxRGB *rgb);
@@ -328,7 +335,7 @@ public:
   virtual GfxColorSpaceMode getMode() { return csLab; }
 
   // Construct a Lab color space.  Returns NULL if unsuccessful.
-  static GfxColorSpace *parse(Array *arr);
+  static GfxColorSpace *parse(Array *arr, int recursion);
 
   virtual void getGray(GfxColor *color, GfxGray *gray);
   virtual void getRGB(GfxColor *color, GfxRGB *rgb);
@@ -374,7 +381,7 @@ public:
   virtual GfxColorSpaceMode getMode() { return csICCBased; }
 
   // Construct an ICCBased color space.  Returns NULL if unsuccessful.
-  static GfxColorSpace *parse(Array *arr);
+  static GfxColorSpace *parse(Array *arr, int recursion);
 
   virtual void getGray(GfxColor *color, GfxGray *gray);
   virtual void getRGB(GfxColor *color, GfxRGB *rgb);
@@ -410,8 +417,8 @@ public:
   virtual GfxColorSpace *copy();
   virtual GfxColorSpaceMode getMode() { return csIndexed; }
 
-  // Construct a Lab color space.  Returns NULL if unsuccessful.
-  static GfxColorSpace *parse(Array *arr);
+  // Construct an Indexed color space.  Returns NULL if unsuccessful.
+  static GfxColorSpace *parse(Array *arr, int recursion);
 
   virtual void getGray(GfxColor *color, GfxGray *gray);
   virtual void getRGB(GfxColor *color, GfxRGB *rgb);
@@ -450,7 +457,7 @@ public:
   virtual GfxColorSpaceMode getMode() { return csSeparation; }
 
   // Construct a Separation color space.  Returns NULL if unsuccessful.
-  static GfxColorSpace *parse(Array *arr);
+  static GfxColorSpace *parse(Array *arr, int recursion);
 
   virtual void getGray(GfxColor *color, GfxGray *gray);
   virtual void getRGB(GfxColor *color, GfxRGB *rgb);
@@ -468,6 +475,10 @@ public:
 
 private:
 
+  GfxSeparationColorSpace(GString *nameA, GfxColorSpace *altA,
+			  Function *funcA, GBool nonMarkingA,
+			  Guint overprintMaskA);
+
   GString *name;		// colorant name
   GfxColorSpace *alt;		// alternate color space
   Function *func;		// tint transform (into alternate color space)
@@ -481,13 +492,14 @@ private:
 class GfxDeviceNColorSpace: public GfxColorSpace {
 public:
 
-  GfxDeviceNColorSpace(int nCompsA, GfxColorSpace *alt, Function *func);
+  GfxDeviceNColorSpace(int nCompsA, GString **namesA,
+		       GfxColorSpace *alt, Function *func);
   virtual ~GfxDeviceNColorSpace();
   virtual GfxColorSpace *copy();
   virtual GfxColorSpaceMode getMode() { return csDeviceN; }
 
   // Construct a DeviceN color space.  Returns NULL if unsuccessful.
-  static GfxColorSpace *parse(Array *arr);
+  static GfxColorSpace *parse(Array *arr, int recursion);
 
   virtual void getGray(GfxColor *color, GfxGray *gray);
   virtual void getRGB(GfxColor *color, GfxRGB *rgb);
@@ -504,6 +516,10 @@ public:
   Function *getTintTransformFunc() { return func; }
 
 private:
+
+  GfxDeviceNColorSpace(int nCompsA, GString **namesA,
+		       GfxColorSpace *alt, Function *func,
+		       GBool nonMarkingA, Guint overprintMaskA);
 
   int nComps;			// number of components
   GString			// colorant names
@@ -526,7 +542,7 @@ public:
   virtual GfxColorSpaceMode getMode() { return csPattern; }
 
   // Construct a Pattern color space.  Returns NULL if unsuccessful.
-  static GfxColorSpace *parse(Array *arr);
+  static GfxColorSpace *parse(Array *arr, int recursion);
 
   virtual void getGray(GfxColor *color, GfxGray *gray);
   virtual void getRGB(GfxColor *color, GfxRGB *rgb);
@@ -878,6 +894,11 @@ public:
   void getCMYK(Guchar *x, GfxCMYK *cmyk);
   void getColor(Guchar *x, GfxColor *color);
 
+  // Convert a line of <n> pixels to 8-bit colors.
+  void getGrayByteLine(Guchar *in, Guchar *out, int n);
+  void getRGBByteLine(Guchar *in, Guchar *out, int n);
+  void getCMYKByteLine(Guchar *in, Guchar *out, int n);
+
 private:
 
   GfxImageColorMap(GfxImageColorMap *colorMap);
@@ -889,6 +910,8 @@ private:
   int nComps2;			// number of components in colorSpace2
   GfxColorComp *		// lookup table
     lookup[gfxColorMaxComps];
+  GfxColorComp *		// optimized case lookup table
+    lookup2[gfxColorMaxComps];
   double			// minimum values for each component
     decodeLow[gfxColorMaxComps];
   double			// max - min value for each component
@@ -1023,7 +1046,8 @@ public:
   ~GfxState();
 
   // Copy.
-  GfxState *copy() { return new GfxState(this); }
+  GfxState *copy(GBool copyPath = gFalse)
+    { return new GfxState(this, copyPath); }
 
   // Accessors.
   double getHDPI() { return hDPI; }
@@ -1059,6 +1083,7 @@ public:
   double getStrokeOpacity() { return strokeOpacity; }
   GBool getFillOverprint() { return fillOverprint; }
   GBool getStrokeOverprint() { return strokeOverprint; }
+  int getOverprintMode() { return overprintMode; }
   Function **getTransfer() { return transfer; }
   double getLineWidth() { return lineWidth; }
   void getLineDash(double **dash, int *length, double *start)
@@ -1127,6 +1152,7 @@ public:
   void setStrokeOpacity(double opac) { strokeOpacity = opac; }
   void setFillOverprint(GBool op) { fillOverprint = op; }
   void setStrokeOverprint(GBool op) { strokeOverprint = op; }
+  void setOverprintMode(int opm) { overprintMode = opm; }
   void setTransfer(Function **funcs);
   void setLineWidth(double width) { lineWidth = width; }
   void setLineDash(double *dash, int length, double start);
@@ -1169,6 +1195,7 @@ public:
   // Update clip region.
   void clip();
   void clipToStrokePath();
+  void clipToRect(double xMin, double yMin, double xMax, double yMax);
 
   // Text position.
   void textSetPos(double tx, double ty) { lineX = tx; lineY = ty; }
@@ -1204,6 +1231,7 @@ private:
   double strokeOpacity;		// stroke opacity
   GBool fillOverprint;		// fill overprint
   GBool strokeOverprint;	// stroke overprint
+  int overprintMode;		// overprint mode ("OPM")
   Function *transfer[4];	// transfer function (entries may be: all
 				//   NULL = identity; last three NULL =
 				//   single function; all four non-NULL =
@@ -1238,7 +1266,7 @@ private:
 
   GfxState *saved;		// next GfxState on stack
 
-  GfxState(GfxState *state);
+  GfxState(GfxState *state, GBool copyPath);
 };
 
 #endif

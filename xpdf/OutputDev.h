@@ -19,6 +19,7 @@
 #include "CharTypes.h"
 
 class GString;
+class Gfx;
 class GfxState;
 struct GfxColor;
 class GfxColorSpace;
@@ -76,6 +77,11 @@ public:
   // Does this device need non-text content?
   virtual GBool needNonText() { return gTrue; }
 
+  // Does this device require incCharCount to be called for text on
+  // non-shown layers?
+  virtual GBool needCharCount() { return gFalse; }
+
+
   //----- initialization and control
 
   // Set default transform matrix.
@@ -88,7 +94,7 @@ public:
   virtual GBool checkPageSlice(Page *page, double hDPI, double vDPI,
 			       int rotate, GBool useMediaBox, GBool crop,
 			       int sliceX, int sliceY, int sliceW, int sliceH,
-			       GBool printing, Catalog *catalog,
+			       GBool printing,
 			       GBool (*abortCheckCbk)(void *data) = NULL,
 			       void *abortCheckCbkData = NULL)
     { return gTrue; }
@@ -135,6 +141,7 @@ public:
   virtual void updateStrokeOpacity(GfxState *state) {}
   virtual void updateFillOverprint(GfxState *state) {}
   virtual void updateStrokeOverprint(GfxState *state) {}
+  virtual void updateOverprintMode(GfxState *state) {}
   virtual void updateTransfer(GfxState *state) {}
 
   //----- update text state
@@ -147,12 +154,14 @@ public:
   virtual void updateHorizScaling(GfxState *state) {}
   virtual void updateTextPos(GfxState *state) {}
   virtual void updateTextShift(GfxState *state, double shift) {}
+  virtual void saveTextPos(GfxState *state) {}
+  virtual void restoreTextPos(GfxState *state) {}
 
   //----- path painting
   virtual void stroke(GfxState *state) {}
   virtual void fill(GfxState *state) {}
   virtual void eoFill(GfxState *state) {}
-  virtual void tilingPatternFill(GfxState *state, Object *str,
+  virtual void tilingPatternFill(GfxState *state, Gfx *gfx, Object *str,
 				 int paintType, Dict *resDict,
 				 double *mat, double *bbox,
 				 int x0, int y0, int x1, int y1,
@@ -185,11 +194,18 @@ public:
 			       CharCode code, Unicode *u, int uLen);
   virtual void endType3Char(GfxState *state) {}
   virtual void endTextObject(GfxState *state) {}
+  virtual void incCharCount(int nChars) {}
+  virtual void beginActualText(GfxState *state, Unicode *u, int uLen) {}
+  virtual void endActualText(GfxState *state) {}
 
   //----- image drawing
   virtual void drawImageMask(GfxState *state, Object *ref, Stream *str,
 			     int width, int height, GBool invert,
 			     GBool inlineImg);
+  virtual void setSoftMaskFromImageMask(GfxState *state,
+					Object *ref, Stream *str,
+					int width, int height, GBool invert,
+					GBool inlineImg);
   virtual void drawImage(GfxState *state, Object *ref, Stream *str,
 			 int width, int height, GfxImageColorMap *colorMap,
 			 int *maskColors, GBool inlineImg);
@@ -234,11 +250,10 @@ public:
   virtual void clearSoftMask(GfxState *state) {}
 
   //----- links
-  virtual void processLink(Link *link, Catalog *catalog) {}
+  virtual void processLink(Link *link) {}
 
 #if 1 //~tmp: turn off anti-aliasing temporarily
-  virtual GBool getVectorAntialias() { return gFalse; }
-  virtual void setVectorAntialias(GBool vaa) {}
+  virtual void setInShading(GBool sh) {}
 #endif
 
 private:

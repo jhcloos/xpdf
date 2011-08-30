@@ -51,7 +51,7 @@ XpdfObject _xpdfGetCatalog(XpdfDoc doc) {
 HWND _xpdfWin32GetWindow(XpdfDoc doc) {
   WinPDFCore *core;
 
-  if (!(core = (WinPDFCore *)((PDFDoc *)doc)->getGUIData())) {
+  if (!(core = (WinPDFCore *)((PDFDoc *)doc)->getCore())) {
     return NULL;
   }
   return core->getDrawFrame();
@@ -62,7 +62,7 @@ HWND _xpdfWin32GetWindow(XpdfDoc doc) {
 Widget _xpdfXGetWindow(XpdfDoc doc) {
   XPDFCore *core;
 
-  if (!(core = (XPDFCore *)((PDFDoc *)doc)->getGUIData())) {
+  if (!(core = (XPDFCore *)((PDFDoc *)doc)->getCore())) {
     return NULL;
   }
   return core->getWidget();

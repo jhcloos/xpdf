@@ -45,6 +45,7 @@ SplashFontEngine::SplashFontEngine(
 #endif
 #if HAVE_FREETYPE_FREETYPE_H || HAVE_FREETYPE_H
 				   GBool enableFreeType,
+				   Guint freeTypeFlags,
 #endif
 				   GBool aa) {
   int i;
@@ -62,7 +63,7 @@ SplashFontEngine::SplashFontEngine(
 #endif
 #if HAVE_FREETYPE_FREETYPE_H || HAVE_FREETYPE_H
   if (enableFreeType) {
-    ftEngine = SplashFTFontEngine::init(aa);
+    ftEngine = SplashFTFontEngine::init(aa, freeTypeFlags);
   } else {
     ftEngine = NULL;
   }
@@ -107,7 +108,8 @@ SplashFontFile *SplashFontEngine::getFontFile(SplashFontFileID *id) {
 
 SplashFontFile *SplashFontEngine::loadType1Font(SplashFontFileID *idA,
 						char *fileName,
-						GBool deleteFile, char **enc) {
+						GBool deleteFile,
+						const char **enc) {
   SplashFontFile *fontFile;
 
   fontFile = NULL;
@@ -138,7 +140,7 @@ SplashFontFile *SplashFontEngine::loadType1Font(SplashFontFileID *idA,
 SplashFontFile *SplashFontEngine::loadType1CFont(SplashFontFileID *idA,
 						 char *fileName,
 						 GBool deleteFile,
-						 char **enc) {
+						 const char **enc) {
   SplashFontFile *fontFile;
 
   fontFile = NULL;
@@ -169,7 +171,7 @@ SplashFontFile *SplashFontEngine::loadType1CFont(SplashFontFileID *idA,
 SplashFontFile *SplashFontEngine::loadOpenTypeT1CFont(SplashFontFileID *idA,
 						      char *fileName,
 						      GBool deleteFile,
-						      char **enc) {
+						      const char **enc) {
   SplashFontFile *fontFile;
 
   fontFile = NULL;
@@ -219,13 +221,16 @@ SplashFontFile *SplashFontEngine::loadCIDFont(SplashFontFileID *idA,
 
 SplashFontFile *SplashFontEngine::loadOpenTypeCFFFont(SplashFontFileID *idA,
 						      char *fileName,
-						      GBool deleteFile) {
+						      GBool deleteFile,
+						      int *codeToGID,
+						      int codeToGIDLen) {
   SplashFontFile *fontFile;
 
   fontFile = NULL;
 #if HAVE_FREETYPE_FREETYPE_H || HAVE_FREETYPE_H
   if (!fontFile && ftEngine) {
-    fontFile = ftEngine->loadOpenTypeCFFFont(idA, fileName, deleteFile);
+    fontFile = ftEngine->loadOpenTypeCFFFont(idA, fileName, deleteFile,
+					     codeToGID, codeToGIDLen);
   }
 #endif
 
@@ -244,15 +249,17 @@ SplashFontFile *SplashFontEngine::loadOpenTypeCFFFont(SplashFontFileID *idA,
 
 SplashFontFile *SplashFontEngine::loadTrueTypeFont(SplashFontFileID *idA,
 						   char *fileName,
+						   int fontNum,
 						   GBool deleteFile,
-						   Gushort *codeToGID,
-						   int codeToGIDLen) {
+						   int *codeToGID,
+						   int codeToGIDLen,
+						   char *fontName) {
   SplashFontFile *fontFile;
 
   fontFile = NULL;
 #if HAVE_FREETYPE_FREETYPE_H || HAVE_FREETYPE_H
   if (!fontFile && ftEngine) {
-    fontFile = ftEngine->loadTrueTypeFont(idA, fileName, deleteFile,
+    fontFile = ftEngine->loadTrueTypeFont(idA, fileName, fontNum, deleteFile,
 					  codeToGID, codeToGIDLen);
   }
 #endif
@@ -285,7 +292,7 @@ SplashFont *SplashFontEngine::getFont(SplashFontFile *fontFile,
   mat[1] = -(textMat[0] * ctm[1] + textMat[1] * ctm[3]);
   mat[2] = textMat[2] * ctm[0] + textMat[3] * ctm[2];
   mat[3] = -(textMat[2] * ctm[1] + textMat[3] * ctm[3]);
-  if (splashAbs(mat[0] * mat[3] - mat[1] * mat[2]) < 0.01) {
+  if (!splashCheckDet(mat[0], mat[1], mat[2], mat[3], 0.01)) {
     // avoid a singular (or close-to-singular) matrix
     mat[0] = 0.01;  mat[1] = 0;
     mat[2] = 0;     mat[3] = 0.01;

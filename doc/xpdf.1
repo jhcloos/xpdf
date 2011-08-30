@@ -1,7 +1,7 @@
-.\" Copyright 1996-2007 Glyph & Cog, LLC
-.TH xpdf 1 "27 February 2007"
+.\" Copyright 1996-2011 Glyph & Cog, LLC
+.TH xpdf 1 "15 August 2011"
 .SH NAME
-xpdf \- Portable Document Format (PDF) file viewer for X (version 3.02)
+xpdf \- Portable Document Format (PDF) file viewer for X (version 3.03)
 .SH SYNOPSIS
 .B xpdf
 [options]
@@ -92,7 +92,7 @@ xpdf.fullScreenMatteColor, for full-screen mode.)
 .TP
 .BI \-z " zoom"
 Set the initial zoom factor.  A number specifies a zoom percentage,
-where 100 means 72 dpi.You may also specify \'page', to fit the page
+where 100 means 72 dpi.  You may also specify \'page', to fit the page
 to the window size, or \'width', to fit the page width to the window
 width.
 .RB "[config file: " initialZoom "; or X resource: " xpdf.initialZoom ]
@@ -176,16 +176,16 @@ section below).
 .BI \-exec " command"
 Execute a command (see the
 .B COMMANDS
-section below) in an xpdf remote server window (with -remote only).
+section below) in an xpdf remote server window (with \-remote only).
 .TP
 .B \-reload
-Reload xpdf remote server window (with -remote only).
+Reload xpdf remote server window (with \-remote only).
 .TP
 .B \-raise
-Raise xpdf remote server window (with -remote only).
+Raise xpdf remote server window (with \-remote only).
 .TP
 .B \-quit
-Kill xpdf remote server (with -remote only).
+Kill xpdf remote server (with \-remote only).
 .TP
 .B \-cmd
 Print commands as they're executed (useful for debugging).
@@ -259,7 +259,7 @@ Move to a specific page number.  Click in the box to activate it, type
 the page number, then hit return.
 .TP
 .B "zoom popup menu"
-Change the zoom factor (see the description of the -z option above).
+Change the zoom factor (see the description of the \-z option above).
 .TP
 .B "binoculars button"
 Find a text string.
@@ -451,7 +451,7 @@ add the lines:
 # Use xpdf to view PDF files.
 .RE
 .RS
-application/pdf; xpdf -q %s
+application/pdf; xpdf \-q %s
 .RE
 .PP
 Make sure that xpdf is on your executable search path.
@@ -462,7 +462,7 @@ occurrence of \'%s' with the URL.  For example, to call netscape with
 the URL, add this line to your config file:
 .PP
 .RS
-urlCommand "netscape -remote 'openURL(%s)'"
+urlCommand "netscape \-remote 'openURL(%s)'"
 .RE
 .SH COMMANDS
 Xpdf's key and mouse bindings are user-configurable, using the bind and
@@ -581,6 +581,15 @@ Zoom in - go to the next higher zoom factor.
 .B zoomOut
 Zoom out - go the next lower zoom factor.
 .TP
+.B rotateCW
+Rotate the page 90 degrees clockwise.
+.TP
+.B rotateCCW
+Rotate the page 90 degrees counterclockwise.
+.TP
+.BI setSelection( pg , ulx , uly , lrx , lry )
+Set the selection to the specified coordinates on the specified page.
+.TP
 .B continuousMode
 Go to continuous view mode.
 .TP
@@ -643,6 +652,8 @@ command string:
           file is open)
     %u => link URL (or an empty string if not over
           a URL link)
+    %p => current page number (or an empty string if
+          no file is open)
     %x => selection upper-left x coordinate
           (or 0 if there is no selection)
     %y => selection upper-left y coordinate
@@ -651,6 +662,9 @@ command string:
           (or 0 if there is no selection)
     %Y => selection lower-right y coordinate
           (or 0 if there is no selection)
+    %i => page containing the mouse pointer
+    %j => x coordinate of the mouse pointer
+    %k => y coordinate of the mouse pointer
     %% => %
 
 .fi
@@ -806,14 +820,14 @@ Xpdf can be started in remote server mode by specifying a server name
 (in addition to the file name and page number).  For example:
 .PP
 .RS
-xpdf -remote myServer file.pdf
+xpdf \-remote myServer file.pdf
 .RE
 .PP
 If there is currently no xpdf running in server mode with the name
 \'myServer', a new xpdf window will be opened.  If another command:
 .PP
 .RS
-xpdf -remote myServer another.pdf 9
+xpdf \-remote myServer another.pdf 9
 .RE
 .PP
 is issued, a new copy of xpdf will not be started.  Instead, the first
@@ -822,15 +836,15 @@ xpdf (the server) will load
 and display page nine.  If the file name is the same:
 .PP
 .RS
-xpdf -remote myServer another.pdf 4
+xpdf \-remote myServer another.pdf 4
 .RE
 .PP
 the xpdf server will simply display the specified page.
 .PP
-The -raise option tells the server to raise its window; it can be
+The \-raise option tells the server to raise its window; it can be
 specified with or without a file name and page number.
 .PP
-The -quit option tells the server to close its window and exit.
+The \-quit option tells the server to close its window and exit.
 .SH EXIT CODES
 The Xpdf tools use the following exit codes:
 .TP
@@ -849,13 +863,14 @@ Error related to PDF permissions.
 99
 Other error.
 .SH AUTHOR
-The xpdf software and documentation are copyright 1996-2007 Glyph &
+The xpdf software and documentation are copyright 1996-2011 Glyph &
 Cog, LLC.
 .SH "SEE ALSO"
 .BR pdftops (1),
 .BR pdftotext (1),
 .BR pdfinfo (1),
 .BR pdffonts (1),
+.BR pdfdetach (1),
 .BR pdftoppm (1),
 .BR pdfimages (1),
 .BR xpdfrc (5)

@@ -160,7 +160,8 @@ public:
 
   // Update the display, given the specified parameters.
   virtual void update(int topPageA, int scrollXA, int scrollYA,
-		      double zoomA, int rotateA, GBool force, GBool addToHist);
+		      double zoomA, int rotateA, GBool force,
+		      GBool addToHist, GBool adjustScrollX);
 
   //----- page/position changes
 
@@ -192,6 +193,9 @@ public:
 
   //----- selection
 
+  // Selection color.
+  void setSelectionColor(SplashColor color);
+
   // Current selected region.
   void setSelection(int newSelectPage,
 		    int newSelectULX, int newSelectULY,
@@ -207,9 +211,10 @@ public:
   //----- find
 
   virtual GBool find(char *s, GBool caseSensitive, GBool next, GBool backward,
-		     GBool onePageOnly);
+		     GBool wholeWord, GBool onePageOnly);
   virtual GBool findU(Unicode *u, int len, GBool caseSensitive,
-		      GBool next, GBool backward, GBool onePageOnly);
+		      GBool next, GBool backward, GBool wholeWord,
+		      GBool onePageOnly);
 
 
   //----- coordinate conversion
@@ -224,6 +229,10 @@ public:
   void cvtUserToDev(int pg, double xu, double yu, int *xd, int *yd);
   void cvtDevToWindow(int pg, int xd, int yd, int *xw, int *yw);
   void cvtDevToUser(int pg, int xd, int yd, double *xu, double *yu);
+
+  //----- password dialog
+
+  virtual GString *getPassword() { return NULL; }
 
   //----- misc access
 
@@ -284,6 +293,7 @@ protected:
   int *pageY;			// top coordinates for each page (only used
 				//   in continuous mode)
   int topPage;			// page at top of window
+  int midPage;			// page at middle of window
   int scrollX, scrollY;		// offset from top left corner of topPage
 				//   to top left corner of window
   double zoom;			// current zoom level, in percent of 72 dpi
@@ -298,6 +308,7 @@ protected:
   GBool dragging;		// set while selection is being dragged
   GBool lastDragLeft;		// last dragged selection edge was left/right
   GBool lastDragTop;		// last dragged selection edge was top/bottom
+  SplashColor selectXorColor;	// selection xor color
 
   PDFHistory			// page history queue
     history[pdfHistorySize];

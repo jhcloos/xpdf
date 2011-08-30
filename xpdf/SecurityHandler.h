@@ -34,6 +34,9 @@ public:
   SecurityHandler(PDFDoc *docA);
   virtual ~SecurityHandler();
 
+  // Returns true if the file is actually unencrypted.
+  virtual GBool isUnencrypted() { return gFalse; }
+
   // Check the document's encryption.  If the document is encrypted,
   // this will first try <ownerPassword> and <userPassword> (in
   // "batch" mode), and if those fail, it will attempt to request a
@@ -91,6 +94,7 @@ public:
   StandardSecurityHandler(PDFDoc *docA, Object *encryptDictA);
   virtual ~StandardSecurityHandler();
 
+  virtual GBool isUnencrypted();
   virtual void *makeAuthData(GString *ownerPassword,
 			     GString *userPassword);
   virtual void *getAuthData();
@@ -107,7 +111,7 @@ private:
 
   int permFlags;
   GBool ownerPasswordOk;
-  Guchar fileKey[16];
+  Guchar fileKey[32];
   int fileKeyLength;
   int encVersion;
   int encRevision;
@@ -115,6 +119,7 @@ private:
   GBool encryptMetadata;
 
   GString *ownerKey, *userKey;
+  GString *ownerEnc, *userEnc;
   GString *fileID;
   GBool ok;
 };

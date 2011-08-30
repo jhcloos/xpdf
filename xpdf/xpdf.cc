@@ -103,7 +103,7 @@ static ArgDesc argDesc[] = {
   {"-exec",       argString,      remoteCmd,      sizeof(remoteCmd),
    "execute command on xpdf remote server (with -remote only)"},
   {"-reload",     argFlag,        &doRemoteReload, 0,
-   "reload xpdf remove server window (with -remote only)"},
+   "reload xpdf remote server window (with -remote only)"},
   {"-raise",      argFlag,        &doRemoteRaise, 0,
    "raise xpdf remote server window (with -remote only)"},
   {"-quit",       argFlag,        &doRemoteQuit,  0,

@@ -29,26 +29,26 @@
 # installed in a "standard" location, xpdf will find them
 # automatically.)
 
-#displayFontT1 Times-Roman		/usr/local/share/ghostscript/fonts/n021003l.pfb
-#displayFontT1 Times-Italic		/usr/local/share/ghostscript/fonts/n021023l.pfb
-#displayFontT1 Times-Bold		/usr/local/share/ghostscript/fonts/n021004l.pfb
-#displayFontT1 Times-BoldItalic		/usr/local/share/ghostscript/fonts/n021024l.pfb
-#displayFontT1 Helvetica		/usr/local/share/ghostscript/fonts/n019003l.pfb
-#displayFontT1 Helvetica-Oblique	/usr/local/share/ghostscript/fonts/n019023l.pfb
-#displayFontT1 Helvetica-Bold		/usr/local/share/ghostscript/fonts/n019004l.pfb
-#displayFontT1 Helvetica-BoldOblique	/usr/local/share/ghostscript/fonts/n019024l.pfb
-#displayFontT1 Courier			/usr/local/share/ghostscript/fonts/n022003l.pfb
-#displayFontT1 Courier-Oblique		/usr/local/share/ghostscript/fonts/n022023l.pfb
-#displayFontT1 Courier-Bold		/usr/local/share/ghostscript/fonts/n022004l.pfb
-#displayFontT1 Courier-BoldOblique	/usr/local/share/ghostscript/fonts/n022024l.pfb
-#displayFontT1 Symbol			/usr/local/share/ghostscript/fonts/s050000l.pfb
-#displayFontT1 ZapfDingbats		/usr/local/share/ghostscript/fonts/d050000l.pfb
+#fontFile Times-Roman		/usr/local/share/ghostscript/fonts/n021003l.pfb
+#fontFile Times-Italic		/usr/local/share/ghostscript/fonts/n021023l.pfb
+#fontFile Times-Bold		/usr/local/share/ghostscript/fonts/n021004l.pfb
+#fontFile Times-BoldItalic	/usr/local/share/ghostscript/fonts/n021024l.pfb
+#fontFile Helvetica		/usr/local/share/ghostscript/fonts/n019003l.pfb
+#fontFile Helvetica-Oblique	/usr/local/share/ghostscript/fonts/n019023l.pfb
+#fontFile Helvetica-Bold		/usr/local/share/ghostscript/fonts/n019004l.pfb
+#fontFile Helvetica-BoldOblique	/usr/local/share/ghostscript/fonts/n019024l.pfb
+#fontFile Courier		/usr/local/share/ghostscript/fonts/n022003l.pfb
+#fontFile Courier-Oblique	/usr/local/share/ghostscript/fonts/n022023l.pfb
+#fontFile Courier-Bold		/usr/local/share/ghostscript/fonts/n022004l.pfb
+#fontFile Courier-BoldOblique	/usr/local/share/ghostscript/fonts/n022024l.pfb
+#fontFile Symbol			/usr/local/share/ghostscript/fonts/s050000l.pfb
+#fontFile ZapfDingbats		/usr/local/share/ghostscript/fonts/d050000l.pfb
 
 # If you need to display PDF files that refer to non-embedded fonts,
 # you should add one or more fontDir options to point to the
 # directories containing the font files.  Xpdf will only look at .pfa,
-# .pfb, and .ttf files in those directories (other files will simply
-# be ignored).
+# .pfb, .ttf, and .ttc files in those directories (other files will
+# simply be ignored).
 
 #fontDir		/usr/local/fonts/bakoma
 
@@ -88,4 +88,5 @@
 # Set the command used to run a web browser when a URL hyperlink is
 # clicked.
 
+#launchCommand  viewer-script
 #urlCommand	"netscape -remote 'openURL(%s)'"

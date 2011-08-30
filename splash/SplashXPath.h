@@ -34,15 +34,11 @@ struct SplashXPathSeg {
   Guint flags;
 };
 
-#define splashXPathFirst   0x01	// first segment of a subpath
-#define splashXPathLast    0x02	// last segment of a subpath
-#define splashXPathEnd0    0x04	// first endpoint is end of an open subpath
-#define splashXPathEnd1    0x08 // second endpoint is end of an open subpath
-#define splashXPathHoriz   0x10 // segment is vertical (y0 == y1)
+#define splashXPathHoriz   0x01 // segment is vertical (y0 == y1)
 				//   (dxdy is undef)
-#define splashXPathVert    0x20 // segment is horizontal (x0 == x1)
+#define splashXPathVert    0x02 // segment is horizontal (x0 == x1)
 				//   (dydx is undef)
-#define splashXPathFlip	   0x40	// y0 > y1
+#define splashXPathFlip	   0x04	// y0 > y1
 
 //------------------------------------------------------------------------
 // SplashXPath
@@ -72,7 +68,6 @@ public:
 
 private:
 
-  SplashXPath();
   SplashXPath(SplashXPath *xPath);
   void transform(SplashCoord *matrix, SplashCoord xi, SplashCoord yi,
 		 SplashCoord *xo, SplashCoord *yo);
@@ -86,8 +81,7 @@ private:
 		SplashCoord flatness,
 		GBool first, GBool last, GBool end0, GBool end1);
   void addSegment(SplashCoord x0, SplashCoord y0,
-		  SplashCoord x1, SplashCoord y1,
-		  GBool first, GBool last, GBool end0, GBool end1);
+		  SplashCoord x1, SplashCoord y1);
 
   SplashXPathSeg *segs;
   int length, size;		// length and size of segs array

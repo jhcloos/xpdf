@@ -1,7 +1,7 @@
-.\" Copyright 2002-2007 Glyph & Cog, LLC
-.TH xpdfrc 5 "27 February 2007"
+.\" Copyright 2002-2011 Glyph & Cog, LLC
+.TH xpdfrc 5 "15 August 2011"
 .SH NAME
-xpdfrc \- configuration file for Xpdf tools (version 3.02)
+xpdfrc \- configuration file for Xpdf tools (version 3.03)
 .SH DESCRIPTION
 All of the Xpdf tools read a single configuration file.  If you have a
 .I .xpdfrc
@@ -81,10 +81,9 @@ will be converted to the specified output sequence.
 .BI unicodeMap " encoding\-name map\-file"
 Specifies the file with mapping from Unicode to
 .IR encoding\-name .
-These encodings are used for X display fonts and text output (see
-below).  Each line of a unicodeMap file represents a range of one or
-more Unicode characters which maps linearly to a range in the output
-encoding:
+These encodings are used for text output (see below).  Each line of a
+unicodeMap file represents a range of one or more Unicode characters
+which maps linearly to a range in the output encoding:
 .nf
 
 .I "    " in\-start\-hex in\-end\-hex out\-start\-hex
@@ -137,59 +136,100 @@ Specifies a search directory,
 .IR dir ,
 for ToUnicode CMaps.  There can be multiple ToUnicode directories.
 There are no default ToUnicode directories.
-.SH DISPLAY FONTS
+.SH GENERAL FONT CONFIGURATION
 .TP
-.BI displayFontT1 " PDF\-font\-name T1\-file"
+.BI fontFile " PDF\-font\-name font\-file"
 Maps a PDF font,
 .IR PDF\-font\-name ,
-to a Type 1 font for display.  The Type 1 font file,
-.IR T1\-file ,
-should be a standard .pfa or .pfb file.
-.TP
-.BI displayFontTT " PDF\-font\-name TT\-file"
-Maps a PDF font,
-.IR PDF\-font\-name ,
-to a TrueType font for display.  The TrueType font file,
-.IR TT\-file ,
-should be a standard .ttf file.
-.TP
-.BI displayNamedCIDFontT1 " PDF\-font\-name T1\-file"
-Maps a specific PDF CID (16-bit) font,
-.IR PDF\-font\-name ,
-to a CID font (16-bit PostScript font), for display.  There are no
-default CID font mappings.
-.TP
-.BI displayCIDFontT1 " registry\-ordering T1\-file"
-Maps the
-.I registry\-ordering
-character collection to a CID font (16-bit PostScript font), for
-display.  This mapping is used if the font name doesn't match any of
-the fonts declared with displayNamedCIDFont* commands.  There are no
-default CID font mappings.
-.TP
-.BI displayNamedCIDFontTT " PDF\-font\-name TT\-file"
-Maps a specific PDF CID (16-bit) font,
-.IR PDF\-font\-name ,
-to a (16-bit) TrueType font, for display.  There are no default CID
-font mappings.
-.TP
-.BI displayCIDFontTT " registry\-ordering TT\-file"
-Maps the
-.I registry\-ordering
-character collection to a (16-bit) TrueType font, for display.  This
-mapping is used if the font name doesn't match any of the fonts
-declared with displayNamedCIDFont* commands.  There are no default CID
-font mappings.
+to a font for display or PostScript output.  The font file,
+.IR font\-file ,
+can be any type allowed in a PDF file.  This command can be used for
+8-bit or 16-bit (CID) fonts.
 .TP
 .BI fontDir " dir"
-Specifies a search directory for external font files.  There can be
-multiple fontDir directories.  If a PDF file uses a font but doesn't
-embed it, these directories will be searched for a matching font file.
-These fonts are used by both xpdf (for display) and pdftops (for
-embedding in the generated PostScript).  Type 1 fonts must have a
-suffix of ".pfa", ".pfb", ".ps", or no suffix at all.  TrueType fonts
-must have a ".ttf" suffix.  Other files in these directories will be
-ignored.  There are no default fontDir directories.
+Specifies a search directory for font files.  There can be multiple
+fontDir commands; all of the specified directories will be searched in
+order.  The font files can be Type 1 (.pfa or .pfb) or TrueType (.ttf
+or .ttc); other files in the directory will be ignored.  The font file
+name (not including the extension) must exactly match the PDF font
+name.  This search is performed if the font name doesn't match any of
+the fonts declared with the fontFile command.  There are no default
+fontDir directories.
+.TP
+.BI fontFileCC " registry\-ordering font\-file"
+Maps the
+.I registry\-ordering
+character collection to a font for display or PostScript output.  This
+mapping is used if the font name doesn't match any of the fonts
+declared with the fontFile, fontDir, psResidentFont16, or
+psResidentFontCC commands.
+.SH POSTSCRIPT FONT CONFIGURATION
+.TP
+.BR psFontPassthrough " yes | no"
+If set to "yes", pass 8-bit font names through to the PostScript
+output without substitution.  Fonts which are not embedded in the PDF
+file are expected to be available on the printer.  This defaults to
+"no".
+.TP
+.BI psResidentFont " PDF\-font\-name PS\-font\-name"
+When the 8-bit font
+.I PDF\-font\-name
+is used (without embedding) in a PDF file, it will be translated to
+the PostScript font
+.IR PS\-font\-name ,
+which is assumed to be resident in the printer.  Typically,
+.I PDF\-font\-name
+and
+.I PS\-font\-name
+are the same.  By default, only the Base-14 fonts are assumed to be
+resident.
+.TP
+.BI psResidentFont16 " PDF\-font\-name wMode PS\-font\-name encoding"
+When the 16-bit (CID) font
+.I PDF\-font\-name
+with writing mode
+.I wMode
+is used (without embedding) in a PDF file, it will be translated to
+the PostScript font
+.IR PS\-font\-name ,
+which is assumbed to be resident in the printer.  The writing mode
+must be either \'H' for horizontal or \'V' for vertical.  The resident
+font is assumed to use the specified encoding (which must have been
+defined with the unicodeMap command).
+.TP
+.BI psResidentFontCC " registry\-ordering wMode PS\-font\-name encoding"
+When a 16-bit (CID) font using the
+.I registry\-ordering
+character collection and 
+.I wMode
+writing mode is used (without embedding) in a PDF file, the PostScript
+font,
+.IR PS\-font\-name ,
+is substituted for it.  The substituted font is assumbed to be
+resident in the printer.  The writing mode must be either \'H' for
+horizontal or \'V' for vertical.  The resident font is assumed to use
+the specified encoding (which must have been defined with the
+unicodeMap command).
+.TP
+.BR psEmbedType1Fonts " yes | no"
+If set to "no", prevents embedding of Type 1 fonts in generated
+PostScript.  This defaults to "yes".
+.TP
+.BR psEmbedTrueTypeFonts " yes | no"
+If set to "no", prevents embedding of TrueType fonts in generated
+PostScript.  This defaults to "yes".
+.TP
+.BR psEmbedCIDTrueTypeFonts " yes | no"
+If set to "no", prevents embedding of CID TrueType fonts in generated
+PostScript.  For Level 3 PostScript, this generates a CID font, for
+lower levels it generates a non-CID composite font.  This defaults to
+"yes".
+.TP
+.BR psEmbedCIDPostScriptFonts " yes | no"
+If set to "no", prevents embedding of CID PostScript fonts in
+generated PostScript.  For Level 3 PostScript, this generates a CID
+font, for lower levels it generates a non-CID composite font.  This
+defaults to "yes".
 .SH POSTSCRIPT CONTROL
 .TP
 .BI psPaperSize " width(pts) height(pts)"
@@ -243,65 +283,6 @@ duplexing.  This defaults to "no".
 .BR psLevel " level1 | level1sep | level2 | level2sep | level3 | level3Sep"
 Sets the PostScript level to generate.  This defaults to "level2".
 .TP
-.BI psFont " PDF\-font\-name PS\-font\-name"
-When the
-.I PDF\-font\-name
-font is used in a PDF file, it will be translated to the PostScript
-font
-.IR PS\-font\-name ,
-which is assumed to be resident in the printer.  Typically,
-.I PDF\-font\-name
-and
-.I PS\-font\-name
-are the same.  By default, only the Base-14 fonts are assumed to be
-resident.
-.TP
-.BI psNamedFont16 " PDF\-font\-name wMode PS\-font\-name encoding"
-When the 16-bit font
-.I PDF\-font\-name
-is used in a PDF file with the
-.I wMode
-writing mode and is not embedded, the
-.I PS\-font\-name
-font is substituted for it.  The writing mode must be either \'H' for
-horizontal or \'V' for vertical.  The
-.I PS\-font\-name
-font is assumed to be resident in the printer and to use the specified
-encoding (which must have been defined with the unicodeMap command).
-.TP
-.BI psFont16 " registry\-ordering wMode PS\-font\-name encoding"
-When a 16-bit font using the
-.I registry\-ordering
-character collection and 
-.I wMode
-writing mode is not embedded and does not match any of the fonts
-declared in psNamedFont16 commands, the
-.I PS\-font\-name
-font is substituted for it.  The writing mode must be either \'H' for
-horizontal or \'V' for vertical.  The
-.I PS\-font\-name
-font is assumed to be resident in the printer and to use the specified
-writing mode and encoding (which must have been defined with the
-unicodeMap command).
-.TP
-.BR psEmbedType1Fonts " yes | no"
-If set to "no", prevents embedding of Type 1 fonts in generated
-PostScript.  This defaults to "yes".
-.TP
-.BR psEmbedTrueTypeFonts " yes | no"
-If set to "no", prevents embedding of TrueType fonts in generated
-PostScript.  This defaults to "yes".
-.TP
-.BR psEmbedCIDTrueTypeFonts " yes | no"
-If set to "no", prevents embedding of CID TrueType fonts in generated
-PostScript.  For Level 3 PostScript, this generates a CID font, for
-lower levels it generates a non-CID composite font.
-.TP
-.BR psEmbedCIDPostScriptFonts " yes | no"
-If set to "no", prevents embedding of CID PostScript fonts in
-generated PostScript.  For Level 3 PostScript, this generates a CID
-font, for lower levels it generates a non-CID composite font.
-.TP
 .BR psPreload " yes | no"
 If set to "yes", PDF forms are converted to PS procedures, and image
 data is preloaded.  This uses more memory in the PostScript
@@ -318,6 +299,25 @@ the Xpdf tools were compiled with OPI support.  This defaults to "no".
 If set to "yes", the ASCIIHexEncode filter will be used instead of
 ASCII85Encode for binary data.  This defaults to "no".
 .TP
+.BR psUncompressPreloadedImages " yes | no"
+If set to "yes", all preloaded images in PS files will uncompressed.
+If set to "no", the original compressed images will be used when
+possible.  The "yes" setting is useful to work around certain buggy
+PostScript interpreters.  This defaults to "no".
+.TP
+.BR psRasterResolution " float"
+Set the resolution (in dpi) for rasterized pages in PostScript output.
+(Pdftops will rasterize pages which use transparency.)  This defaults
+to 300.
+.TP
+.BR psRasterMono " yes | no"
+If set to "yes", rasterized pages in PS files will be monochrome
+(8-bit gray) instead of color.  This defaults to "no".
+.TP
+.BR psAlwaysRasterize " yes | no"
+If set to "yes", all PostScript output will be rasterized.  This
+defaults to "no".
+.TP
 .BI psFile " file\-or\-command"
 Sets the default PostScript file or print command for xpdf.  Commands
 start with a \'|' character; anything else is a file.  If the file
@@ -331,7 +331,7 @@ See the description above, in the DISPLAY FONTS section.
 .TP
 .BI textEncoding " encoding\-name"
 Sets the encoding to use for text output.  (This can be overridden
-with the "-enc" switch on the command line.)  The
+with the "\-enc" switch on the command line.)  The
 .I encoding\-name
 must be defined with the unicodeMap command (see above).  This
 defaults to "Latin1".
@@ -346,7 +346,7 @@ are:
     mac  = CR
 
 .fi
-(This can be overridden with the "-eol" switch on the command line.)
+(This can be overridden with the "\-eol" switch on the command line.)
 The default value is based on the OS where xpdf and pdftotext were
 built.
 .TP
@@ -385,6 +385,16 @@ rasterizer).  This is only relevant if the Xpdf tools were built with
 FreeType support.  ("enableFreeType" replaces the old
 "freetypeControl" option.)  This option defaults to "yes".
 .TP
+.BR enableFreeType " yes | no"
+Enables or disables use of FreeType (a TrueType / Type 1 font
+rasterizer).  This is only relevant if the Xpdf tools were built with
+FreeType support.  ("enableFreeType" replaces the old
+"freetypeControl" option.)  This option defaults to "yes".
+.TP
+.BR disableFreeTypeHinting " yes | no"
+If this is set to "yes", FreeType hinting will be forced off.  This
+option defaults to "no".
+.TP
 .BR antialias " yes | no"
 Enables or disables font anti-aliasing in the PDF rasterizer.  This
 option affects all font rasterizers.  ("antialias" replaces the
@@ -395,8 +405,17 @@ anti-aliasing control provided by the old "t1libControl" and
 Enables or disables anti-aliasing of vector graphics in the PDF
 rasterizer.  This defaults to "yes".
 .TP
+.BR antialiasPrinting " yes | no"
+If this is "yes", bitmaps sent to the printer will be antialiased
+(according to the "antialias" and "vectorAntialias" settings).  If
+this is "no", printed bitmaps will not be antialiased.  This defaults
+to "no".
+.TP
 .BR strokeAdjust " yes | no"
-Enables or disables stroke adjustment.  This defaults to "yes".
+Enables or disables stroke adjustment.  Stroke adjustment moves
+horizontal and vertical lines by up to half a pixel to make them look
+"cleaner" when vector anti-aliasing is enabled.  This defaults to
+"yes".
 .TP
 .BR screenType " dispersed | clustered | stochasticClustered"
 Sets the halftone screen type, which will be used when generating a
@@ -432,6 +451,30 @@ When halftoning, all values above this threshold are forced to solid
 white.  This parameter is a floating point value between 0 (black) and
 1 (white).  The default value is 1.
 .TP
+.BI minLineWidth " float"
+Set the minimum line width, in device pixels.  This affects the
+rasterizer only, not the PostScript converter (except when it uses
+rasterization to handle transparency).  The default value is 0 (no
+minimum).
+.TP
+.BI drawAnnotations " yes | no"
+If set to "no", annotations will not be drawn or printed.  The default
+value is "yes".
+.TP
+.BI overprintPreview " yes | no"
+If set to "yes", generate overprint preview output, honoring the
+OP/op/OPM settings in the PDF file.  Ignored for non-CMYK output.  The
+default value is "no".
+.TP
+.BI launchCommand " command"
+Sets the command executed when you click on a "launch"-type link.  The
+intent is for the command to be a program/script which determines the
+file type and runs the appropriate viewer.  The command line will
+consist of the file to be launched, followed by any parameters
+specified with the link.  Do not use "%s" in "command".  By default,
+this is unset, and Xpdf will simply try to execute the file (after
+prompting the user).
+.TP
 .BI urlCommand " command"
 Sets the command executed when you click on a URL link.  The string
 "%s" will be replaced with the URL.  (See the example below.)  This
@@ -451,8 +494,9 @@ there is no way for Xpdf to tell.  This defaults to "yes".
 .BI mapUnknownCharNames " yes | no"
 If set to "yes", and mapNumericCharNames is set to "no", the Xpdf
 tools will apply a simple pass-through mapping (Unicode index =
-character code) for all unrecognized glyph names.  In some cases, this
-leads to usable text, and in other cases it leads to gibberish --
+character code) for all unrecognized glyph names.  (For CID fonts,
+setting mapNumericCharNames to "no" is unnecessary.)  In some cases,
+this leads to usable text, and in other cases it leads to gibberish --
 there is no way for Xpdf to tell.  This defaults to "no".
 .TP
 .BI bind " modifiers-key context command ..."
@@ -552,20 +596,20 @@ unicodeMap   JISX0208     /usr/local/share/xpdf/JISX0208.unicodeMap
 cMapDir      Adobe-Japan1 /usr/local/share/xpdf/cmap/Adobe-Japan1
 
 # use the Base-14 Type 1 fonts from ghostscript
-displayFontT1 Times-Roman           /usr/local/share/ghostscript/fonts/n021003l.pfb
-displayFontT1 Times-Italic          /usr/local/share/ghostscript/fonts/n021023l.pfb
-displayFontT1 Times-Bold            /usr/local/share/ghostscript/fonts/n021004l.pfb
-displayFontT1 Times-BoldItalic      /usr/local/share/ghostscript/fonts/n021024l.pfb
-displayFontT1 Helvetica             /usr/local/share/ghostscript/fonts/n019003l.pfb
-displayFontT1 Helvetica-Oblique     /usr/local/share/ghostscript/fonts/n019023l.pfb
-displayFontT1 Helvetica-Bold        /usr/local/share/ghostscript/fonts/n019004l.pfb
-displayFontT1 Helvetica-BoldOblique /usr/local/share/ghostscript/fonts/n019024l.pfb
-displayFontT1 Courier               /usr/local/share/ghostscript/fonts/n022003l.pfb
-displayFontT1 Courier-Oblique       /usr/local/share/ghostscript/fonts/n022023l.pfb
-displayFontT1 Courier-Bold          /usr/local/share/ghostscript/fonts/n022004l.pfb
-displayFontT1 Courier-BoldOblique   /usr/local/share/ghostscript/fonts/n022024l.pfb
-displayFontT1 Symbol                /usr/local/share/ghostscript/fonts/s050000l.pfb
-displayFontT1 ZapfDingbats          /usr/local/share/ghostscript/fonts/d050000l.pfb
+fontFile Times-Roman           /usr/local/share/ghostscript/fonts/n021003l.pfb
+fontFile Times-Italic          /usr/local/share/ghostscript/fonts/n021023l.pfb
+fontFile Times-Bold            /usr/local/share/ghostscript/fonts/n021004l.pfb
+fontFile Times-BoldItalic      /usr/local/share/ghostscript/fonts/n021024l.pfb
+fontFile Helvetica             /usr/local/share/ghostscript/fonts/n019003l.pfb
+fontFile Helvetica-Oblique     /usr/local/share/ghostscript/fonts/n019023l.pfb
+fontFile Helvetica-Bold        /usr/local/share/ghostscript/fonts/n019004l.pfb
+fontFile Helvetica-BoldOblique /usr/local/share/ghostscript/fonts/n019024l.pfb
+fontFile Courier               /usr/local/share/ghostscript/fonts/n022003l.pfb
+fontFile Courier-Oblique       /usr/local/share/ghostscript/fonts/n022023l.pfb
+fontFile Courier-Bold          /usr/local/share/ghostscript/fonts/n022004l.pfb
+fontFile Courier-BoldOblique   /usr/local/share/ghostscript/fonts/n022024l.pfb
+fontFile Symbol                /usr/local/share/ghostscript/fonts/s050000l.pfb
+fontFile ZapfDingbats          /usr/local/share/ghostscript/fonts/d050000l.pfb
 
 # use the Bakoma Type 1 fonts
 # (this assumes they happen to be installed in /usr/local/fonts/bakoma)
@@ -577,21 +621,22 @@ psDuplex             no
 psLevel              level2
 psEmbedType1Fonts    yes
 psEmbedTrueTypeFonts yes
-psFile               "| lpr -Pprinter5"
+psFile               "| lpr \-Pprinter5"
 
 # assume that the PostScript printer has the Univers and
 # Univers-Bold fonts
-psFont Univers      Univers
-psFont Univers-Bold Univers-Bold
+psResidentFont Univers      Univers
+psResidentFont Univers-Bold Univers-Bold
 
 # set the text output options
 textEncoding UTF-8
 textEOL      unix
 
 # misc options
-t1libControl    low
-freetypeControl low
-urlCommand      "netscape -remote 'openURL(%s)'"
+enableT1lib     yes
+enableFreeType  yes
+launchCommand   viewer-script
+urlCommand      "netscape \-remote 'openURL(%s)'"
 
 .fi
 .SH FILES
@@ -604,13 +649,15 @@ Depending on build options, it may be placed elsewhere.
 This is the user's configuration file.  If it exists, it will be read
 in place of the system-wide file.
 .SH AUTHOR
-The Xpdf software and documentation are copyright 1996-2007 Glyph &
+The Xpdf software and documentation are copyright 1996-2011 Glyph &
 Cog, LLC.
 .SH "SEE ALSO"
 .BR xpdf (1),
 .BR pdftops (1),
 .BR pdftotext (1),
 .BR pdfinfo (1),
+.BR pdffonts (1),
+.BR pdfdetach (1),
 .BR pdftoppm (1),
 .BR pdfimages (1)
 .br

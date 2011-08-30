@@ -27,7 +27,8 @@ class SplashXPathScanner {
 public:
 
   // Create a new SplashXPathScanner object.  <xPathA> must be sorted.
-  SplashXPathScanner(SplashXPath *xPathA, GBool eoA);
+  SplashXPathScanner(SplashXPath *xPathA, GBool eoA,
+		     int clipYMin, int clipYMax);
 
   ~SplashXPathScanner();
 
@@ -37,6 +38,10 @@ public:
 
   // Return the path's bounding box.
   void getBBoxAA(int *xMinA, int *yMinA, int *xMaxA, int *yMaxA);
+
+  // Returns true if at least part of the path was outside the
+  // clipYMin/clipYMax bounds passed to the constructor.
+  GBool hasPartialClip() { return partialClip; }
 
   // Return the min/max x values for the span at <y>.
   void getSpanBounds(int y, int *spanXMin, int *spanXMax);
@@ -66,22 +71,25 @@ public:
 
 private:
 
-  void computeIntersections(int y);
+  void computeIntersections();
+  void addIntersection(double segYMin, double segYMax,
+		       Guint segFlags,
+		       int y, int x0, int x1);
 
   SplashXPath *xPath;
   GBool eo;
   int xMin, yMin, xMax, yMax;
+  GBool partialClip;
 
-  int interY;			// current y value
+  SplashIntersect *allInter;	// array of intersections
+  int allInterLen;		// number of intersections in <allInter>
+  int allInterSize;		// size of the <allInter> array
+  int *inter;			// indexes into <allInter> for each y value
+  int interY;			// current y value - used by getNextSpan
   int interIdx;			// current index into <inter> - used by
 				//   getNextSpan 
   int interCount;		// current EO/NZWN counter - used by
 				//   getNextSpan
-  int xPathIdx;			// current index into <xPath> - used by
-				//   computeIntersections
-  SplashIntersect *inter;	// intersections array for <interY>
-  int interLen;			// number of intersections in <inter>
-  int interSize;		// size of the <inter> array
 };
 
 #endif

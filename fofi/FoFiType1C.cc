@@ -72,8 +72,8 @@ FoFiType1C::~FoFiType1C() {
     delete name;
   }
   if (encoding &&
-      encoding != fofiType1StandardEncoding &&
-      encoding != fofiType1ExpertEncoding) {
+      encoding != (char **)fofiType1StandardEncoding &&
+      encoding != (char **)fofiType1ExpertEncoding) {
     for (i = 0; i < 256; ++i) {
       gfree(encoding[i]);
     }
@@ -101,8 +101,20 @@ char **FoFiType1C::getEncoding() {
   return encoding;
 }
 
-Gushort *FoFiType1C::getCIDToGIDMap(int *nCIDs) {
-  Gushort *map;
+GString *FoFiType1C::getGlyphName(int gid) {
+  char buf[256];
+  GBool ok;
+
+  ok = gTrue;
+  getString(charset[gid], buf, &ok);
+  if (!ok) {
+    return NULL;
+  }
+  return new GString(buf);
+}
+
+int *FoFiType1C::getCIDToGIDMap(int *nCIDs) {
+  int *map;
   int n, i;
 
   // a CID font's top dict has ROS as the first operator
@@ -120,8 +132,8 @@ Gushort *FoFiType1C::getCIDToGIDMap(int *nCIDs) {
     }
   }
   ++n;
-  map = (Gushort *)gmallocn(n, sizeof(Gushort));
-  memset(map, 0, n * sizeof(Gushort));
+  map = (int *)gmallocn(n, sizeof(int));
+  memset(map, 0, n * sizeof(int));
   for (i = 0; i < nGlyphs; ++i) {
     map[charset[i]] = i;
   }
@@ -129,8 +141,37 @@ Gushort *FoFiType1C::getCIDToGIDMap(int *nCIDs) {
   return map;
 }
 
-void FoFiType1C::convertToType1(char *psName, char **newEncoding, GBool ascii,
-				FoFiOutputFunc outputFunc,
+void FoFiType1C::getFontMatrix(double *mat) {
+  int i;
+
+  if (topDict.firstOp == 0x0c1e && privateDicts[0].hasFontMatrix) {
+    if (topDict.hasFontMatrix) {
+      mat[0] = topDict.fontMatrix[0] * privateDicts[0].fontMatrix[0] +
+	       topDict.fontMatrix[1] * privateDicts[0].fontMatrix[2];
+      mat[1] = topDict.fontMatrix[0] * privateDicts[0].fontMatrix[1] +
+               topDict.fontMatrix[1] * privateDicts[0].fontMatrix[3];
+      mat[2] = topDict.fontMatrix[2] * privateDicts[0].fontMatrix[0] +
+	       topDict.fontMatrix[3] * privateDicts[0].fontMatrix[2];
+      mat[3] = topDict.fontMatrix[2] * privateDicts[0].fontMatrix[1] +
+	       topDict.fontMatrix[3] * privateDicts[0].fontMatrix[3];
+      mat[4] = topDict.fontMatrix[4] * privateDicts[0].fontMatrix[0] +
+	       topDict.fontMatrix[5] * privateDicts[0].fontMatrix[2];
+      mat[5] = topDict.fontMatrix[4] * privateDicts[0].fontMatrix[1] +
+	       topDict.fontMatrix[5] * privateDicts[0].fontMatrix[3];
+    } else {
+      for (i = 0; i < 6; ++i) {
+	mat[i] = privateDicts[0].fontMatrix[i];
+      }
+    }
+  } else {
+    for (i = 0; i < 6; ++i) {
+      mat[i] = topDict.fontMatrix[i];
+    }
+  }
+}
+
+void FoFiType1C::convertToType1(char *psName, const char **newEncoding,
+				GBool ascii, FoFiOutputFunc outputFunc,
 				void *outputStream) {
   int psNameLen;
   Type1CEexecBuf eb;
@@ -138,12 +179,12 @@ void FoFiType1C::convertToType1(char *psName, char **newEncoding, GBool ascii,
   Type1CIndexVal val;
   GString *buf;
   char buf2[256];
-  char **enc;
+  const char **enc;
   GBool ok;
   int i;
 
   if (psName) {
-    psNameLen = strlen(psName);
+    psNameLen = (int)strlen(psName);
   } else {
     psName = name->getCString();
     psNameLen = name->getLength();
@@ -155,7 +196,7 @@ void FoFiType1C::convertToType1(char *psName, char **newEncoding, GBool ascii,
   (*outputFunc)(outputStream, psName, psNameLen);
   if (topDict.versionSID != 0) {
     getString(topDict.versionSID, buf2, &ok);
-    (*outputFunc)(outputStream, buf2, strlen(buf2));
+    (*outputFunc)(outputStream, buf2, (int)strlen(buf2));
   }
   (*outputFunc)(outputStream, "\n", 1);
   // the dictionary needs room for 12 entries: the following 9, plus
@@ -164,39 +205,39 @@ void FoFiType1C::convertToType1(char *psName, char **newEncoding, GBool ascii,
   (*outputFunc)(outputStream, "12 dict begin\n", 14);
   (*outputFunc)(outputStream, "/FontInfo 10 dict dup begin\n", 28);
   if (topDict.versionSID != 0) {
-    (*outputFunc)(outputStream, "/version (", 10);
-    (*outputFunc)(outputStream, buf2, strlen(buf2));
-    (*outputFunc)(outputStream, ") readonly def\n", 15);
+    (*outputFunc)(outputStream, "/version ", 9);
+    writePSString(buf2, outputFunc, outputStream);
+    (*outputFunc)(outputStream, " readonly def\n", 14);
   }
   if (topDict.noticeSID != 0) {
     getString(topDict.noticeSID, buf2, &ok);
-    (*outputFunc)(outputStream, "/Notice (", 9);
-    (*outputFunc)(outputStream, buf2, strlen(buf2));
-    (*outputFunc)(outputStream, ") readonly def\n", 15);
+    (*outputFunc)(outputStream, "/Notice ", 8);
+    writePSString(buf2, outputFunc, outputStream);
+    (*outputFunc)(outputStream, " readonly def\n", 14);
   }
   if (topDict.copyrightSID != 0) {
     getString(topDict.copyrightSID, buf2, &ok);
-    (*outputFunc)(outputStream, "/Copyright (", 12);
-    (*outputFunc)(outputStream, buf2, strlen(buf2));
-    (*outputFunc)(outputStream, ") readonly def\n", 15);
+    (*outputFunc)(outputStream, "/Copyright ", 11);
+    writePSString(buf2, outputFunc, outputStream);
+    (*outputFunc)(outputStream, " readonly def\n", 14);
   }
   if (topDict.fullNameSID != 0) {
     getString(topDict.fullNameSID, buf2, &ok);
-    (*outputFunc)(outputStream, "/FullName (", 11);
-    (*outputFunc)(outputStream, buf2, strlen(buf2));
-    (*outputFunc)(outputStream, ") readonly def\n", 15);
+    (*outputFunc)(outputStream, "/FullName ", 10);
+    writePSString(buf2, outputFunc, outputStream);
+    (*outputFunc)(outputStream, " readonly def\n", 14);
   }
   if (topDict.familyNameSID != 0) {
     getString(topDict.familyNameSID, buf2, &ok);
-    (*outputFunc)(outputStream, "/FamilyName (", 13);
-    (*outputFunc)(outputStream, buf2, strlen(buf2));
-    (*outputFunc)(outputStream, ") readonly def\n", 15);
+    (*outputFunc)(outputStream, "/FamilyName ", 12);
+    writePSString(buf2, outputFunc, outputStream);
+    (*outputFunc)(outputStream, " readonly def\n", 14);
   }
   if (topDict.weightSID != 0) {
     getString(topDict.weightSID, buf2, &ok);
-    (*outputFunc)(outputStream, "/Weight (", 9);
-    (*outputFunc)(outputStream, buf2, strlen(buf2));
-    (*outputFunc)(outputStream, ") readonly def\n", 15);
+    (*outputFunc)(outputStream, "/Weight ", 8);
+    writePSString(buf2, outputFunc, outputStream);
+    (*outputFunc)(outputStream, " readonly def\n", 14);
   }
   if (topDict.isFixedPitch) {
     (*outputFunc)(outputStream, "/isFixedPitch true def\n", 23);
@@ -244,13 +285,13 @@ void FoFiType1C::convertToType1(char *psName, char **newEncoding, GBool ascii,
 
   // write the encoding
   (*outputFunc)(outputStream, "/Encoding ", 10);
-  if (!newEncoding && encoding == fofiType1StandardEncoding) {
+  if (!newEncoding && encoding == (char **)fofiType1StandardEncoding) {
     (*outputFunc)(outputStream, "StandardEncoding def\n", 21);
   } else {
     (*outputFunc)(outputStream, "256 array\n", 10);
     (*outputFunc)(outputStream,
 		  "0 1 255 {1 index exch /.notdef put} for\n", 40);
-    enc = newEncoding ? newEncoding : encoding;
+    enc = newEncoding ? newEncoding : (const char **)encoding;
     for (i = 0; i < 256; ++i) {
       if (enc[i]) {
 	buf = GString::format("dup {0:d} /{1:s} put\n", i, enc[i]);
@@ -429,7 +470,7 @@ void FoFiType1C::convertToType1(char *psName, char **newEncoding, GBool ascii,
   (*outputFunc)(outputStream, "cleartomark\n", 12);
 }
 
-void FoFiType1C::convertToCIDType0(char *psName,
+void FoFiType1C::convertToCIDType0(char *psName, int *codeMap, int nCodes,
 				   FoFiOutputFunc outputFunc,
 				   void *outputStream) {
   int *cidMap;
@@ -444,18 +485,36 @@ void FoFiType1C::convertToCIDType0(char *psName,
   int gid, offset, n, i, j, k;
 
   // compute the CID count and build the CID-to-GID mapping
-  nCIDs = 0;
-  for (i = 0; i < nGlyphs; ++i) {
-    if (charset[i] >= nCIDs) {
-      nCIDs = charset[i] + 1;
+  if (codeMap) {
+    nCIDs = nCodes;
+    cidMap = (int *)gmallocn(nCIDs, sizeof(int));
+    for (i = 0; i < nCodes; ++i) {
+      if (codeMap[i] >= 0 && codeMap[i] < nGlyphs) {
+	cidMap[i] = codeMap[i];
+      } else {
+	cidMap[i] = -1;
+      }
     }
-  }
-  cidMap = (int *)gmallocn(nCIDs, sizeof(int));
-  for (i = 0; i < nCIDs; ++i) {
-    cidMap[i] = -1;
-  }
-  for (i = 0; i < nGlyphs; ++i) {
-    cidMap[charset[i]] = i;
+  } else if (topDict.firstOp == 0x0c1e) {
+    nCIDs = 0;
+    for (i = 0; i < nGlyphs; ++i) {
+      if (charset[i] >= nCIDs) {
+	nCIDs = charset[i] + 1;
+      }
+    }
+    cidMap = (int *)gmallocn(nCIDs, sizeof(int));
+    for (i = 0; i < nCIDs; ++i) {
+      cidMap[i] = -1;
+    }
+    for (i = 0; i < nGlyphs; ++i) {
+      cidMap[charset[i]] = i;
+    }
+  } else {
+    nCIDs = nGlyphs;
+    cidMap = (int *)gmallocn(nCIDs, sizeof(int));
+    for (i = 0; i < nCIDs; ++i) {
+      cidMap[i] = i;
+    }
   }
 
   // build the charstrings
@@ -467,12 +526,13 @@ void FoFiType1C::convertToCIDType0(char *psName,
       ok = gTrue;
       getIndexVal(&charStringsIdx, gid, &val, &ok);
       if (ok) {
-	getIndex(privateDicts[fdSelect[gid]].subrsOffset, &subrIdx, &ok);
+	getIndex(privateDicts[fdSelect ? fdSelect[gid] : 0].subrsOffset,
+		 &subrIdx, &ok);
 	if (!ok) {
 	  subrIdx.pos = -1;
 	}
 	cvtGlyph(val.pos, val.len, charStrings,
-		 &subrIdx, &privateDicts[fdSelect[gid]], gTrue);
+		 &subrIdx, &privateDicts[fdSelect ? fdSelect[gid] : 0], gTrue);
       }
     }
   }
@@ -497,7 +557,7 @@ void FoFiType1C::convertToCIDType0(char *psName,
   (*outputFunc)(outputStream, "/CIDInit /ProcSet findresource begin\n", 37);
   (*outputFunc)(outputStream, "20 dict begin\n", 14);
   (*outputFunc)(outputStream, "/CIDFontName /", 14);
-  (*outputFunc)(outputStream, psName, strlen(psName));
+  (*outputFunc)(outputStream, psName, (int)strlen(psName));
   (*outputFunc)(outputStream, " def\n", 5);
   (*outputFunc)(outputStream, "/CIDFontType 0 def\n", 19);
   (*outputFunc)(outputStream, "/CIDSystemInfo 3 dict dup begin\n", 32);
@@ -506,14 +566,14 @@ void FoFiType1C::convertToCIDType0(char *psName,
     getString(topDict.registrySID, buf2, &ok);
     if (ok) {
       (*outputFunc)(outputStream, "  /Registry (", 13);
-      (*outputFunc)(outputStream, buf2, strlen(buf2));
+      (*outputFunc)(outputStream, buf2, (int)strlen(buf2));
       (*outputFunc)(outputStream, ") def\n", 6);
     }
     ok = gTrue;
     getString(topDict.orderingSID, buf2, &ok);
     if (ok) {
       (*outputFunc)(outputStream, "  /Ordering (", 13);
-      (*outputFunc)(outputStream, buf2, strlen(buf2));
+      (*outputFunc)(outputStream, buf2, (int)strlen(buf2));
       (*outputFunc)(outputStream, ") def\n", 6);
     }
   } else {
@@ -717,7 +777,7 @@ void FoFiType1C::convertToCIDType0(char *psName,
   // write the charstring offset (CIDMap) table
   for (i = 0; i <= nCIDs; i += 6) {
     for (j = 0; j < 6 && i+j <= nCIDs; ++j) {
-      if (i+j < nCIDs && cidMap[i+j] >= 0) {
+      if (i+j < nCIDs && cidMap[i+j] >= 0 && fdSelect) {
 	buf2[0] = (char)fdSelect[cidMap[i+j]];
       } else {
 	buf2[0] = (char)0;
@@ -755,7 +815,7 @@ void FoFiType1C::convertToCIDType0(char *psName,
   gfree(cidMap);
 }
 
-void FoFiType1C::convertToType0(char *psName,
+void FoFiType1C::convertToType0(char *psName, int *codeMap, int nCodes,
 				FoFiOutputFunc outputFunc,
 				void *outputStream) {
   int *cidMap;
@@ -768,18 +828,36 @@ void FoFiType1C::convertToType0(char *psName,
   int fd, i, j, k;
 
   // compute the CID count and build the CID-to-GID mapping
-  nCIDs = 0;
-  for (i = 0; i < nGlyphs; ++i) {
-    if (charset[i] >= nCIDs) {
-      nCIDs = charset[i] + 1;
+  if (codeMap) {
+    nCIDs = nCodes;
+    cidMap = (int *)gmallocn(nCIDs, sizeof(int));
+    for (i = 0; i < nCodes; ++i) {
+      if (codeMap[i] >= 0 && codeMap[i] < nGlyphs) {
+	cidMap[i] = codeMap[i];
+      } else {
+	cidMap[i] = -1;
+      }
     }
-  }
-  cidMap = (int *)gmallocn(nCIDs, sizeof(int));
-  for (i = 0; i < nCIDs; ++i) {
-    cidMap[i] = -1;
-  }
-  for (i = 0; i < nGlyphs; ++i) {
-    cidMap[charset[i]] = i;
+  } else if (topDict.firstOp == 0x0c1e) {
+    nCIDs = 0;
+    for (i = 0; i < nGlyphs; ++i) {
+      if (charset[i] >= nCIDs) {
+	nCIDs = charset[i] + 1;
+      }
+    }
+    cidMap = (int *)gmallocn(nCIDs, sizeof(int));
+    for (i = 0; i < nCIDs; ++i) {
+      cidMap[i] = -1;
+    }
+    for (i = 0; i < nGlyphs; ++i) {
+      cidMap[charset[i]] = i;
+    }
+  } else {
+    nCIDs = nGlyphs;
+    cidMap = (int *)gmallocn(nCIDs, sizeof(int));
+    for (i = 0; i < nCIDs; ++i) {
+      cidMap[i] = i;
+    }
   }
 
   // write the descendant Type 1 fonts
@@ -789,17 +867,20 @@ void FoFiType1C::convertToType0(char *psName,
     //~ to handle multiple FDs correctly, need to somehow divide the
     //~ font up by FD; as a kludge we ignore CID 0, which is .notdef
     fd = 0;
-    for (j = i==0 ? 1 : 0; j < 256 && i+j < nCIDs; ++j) {
-      if (cidMap[i+j] >= 0) {
-	fd = fdSelect[cidMap[i+j]];
-	break;
+    // if fdSelect is NULL, we have an 8-bit font, so just leave fd=0
+    if (fdSelect) {
+      for (j = i==0 ? 1 : 0; j < 256 && i+j < nCIDs; ++j) {
+	if (cidMap[i+j] >= 0) {
+	  fd = fdSelect[cidMap[i+j]];
+	  break;
+	}
       }
     }
 
     // font dictionary (unencrypted section)
     (*outputFunc)(outputStream, "16 dict begin\n", 14);
     (*outputFunc)(outputStream, "/FontName /", 11);
-    (*outputFunc)(outputStream, psName, strlen(psName));
+    (*outputFunc)(outputStream, psName, (int)strlen(psName));
     buf = GString::format("_{0:02x} def\n", i >> 8);
     (*outputFunc)(outputStream, buf->getCString(), buf->getLength());
     delete buf;
@@ -1031,7 +1112,7 @@ void FoFiType1C::convertToType0(char *psName,
   // write the Type 0 parent font
   (*outputFunc)(outputStream, "16 dict begin\n", 14);
   (*outputFunc)(outputStream, "/FontName /", 11);
-  (*outputFunc)(outputStream, psName, strlen(psName));
+  (*outputFunc)(outputStream, psName, (int)strlen(psName));
   (*outputFunc)(outputStream, " def\n", 5);
   (*outputFunc)(outputStream, "/FontType 0 def\n", 16);
   if (topDict.hasFontMatrix) {
@@ -1055,7 +1136,7 @@ void FoFiType1C::convertToType0(char *psName,
   (*outputFunc)(outputStream, "/FDepVector [\n", 14);
   for (i = 0; i < nCIDs; i += 256) {
     (*outputFunc)(outputStream, "/", 1);
-    (*outputFunc)(outputStream, psName, strlen(psName));
+    (*outputFunc)(outputStream, psName, (int)strlen(psName));
     buf = GString::format("_{0:02x} findfont\n", i >> 8);
     (*outputFunc)(outputStream, buf->getCString(), buf->getLength());
     delete buf;
@@ -1066,7 +1147,7 @@ void FoFiType1C::convertToType0(char *psName,
   gfree(cidMap);
 }
 
-void FoFiType1C::eexecCvtGlyph(Type1CEexecBuf *eb, char *glyphName,
+void FoFiType1C::eexecCvtGlyph(Type1CEexecBuf *eb, const char *glyphName,
 			       int offset, int nBytes,
 			       Type1CIndex *subrIdx,
 			       Type1CPrivateDict *pDict) {
@@ -1792,7 +1873,7 @@ void FoFiType1C::cvtNum(double x, GBool isFP, GString *charBuf) {
   charBuf->append((char *)buf, n);
 }
 
-void FoFiType1C::eexecWrite(Type1CEexecBuf *eb, char *s) {
+void FoFiType1C::eexecWrite(Type1CEexecBuf *eb, const char *s) {
   Guchar *p;
   Guchar x;
 
@@ -1834,6 +1915,38 @@ void FoFiType1C::eexecWriteCharstring(Type1CEexecBuf *eb,
       (*eb->outputFunc)(eb->outputStream, (char *)&x, 1);
     }
   }
+}
+
+void FoFiType1C::writePSString(char *s, FoFiOutputFunc outputFunc,
+			       void *outputStream) {
+  char buf[80];
+  char *p;
+  int i, c;
+
+  i = 0;
+  buf[i++] = '(';
+  for (p = s; *p; ++p) {
+    c = *p & 0xff;
+    if (c == '(' || c == ')' || c == '\\') {
+      buf[i++] = '\\';
+      buf[i++] = c;
+    } else if (c < 0x20 || c >= 0x80) {
+      buf[i++] = '\\';
+      buf[i++] = '0' + ((c >> 6) & 7);
+      buf[i++] = '0' + ((c >> 3) & 7);
+      buf[i++] = '0' + (c & 7);
+    } else {
+      buf[i++] = c;
+    }
+    if (i >= 64) {
+      buf[i++] = '\\';
+      buf[i++] = '\n';
+      (*outputFunc)(outputStream, buf, i);
+      i = 0;
+    }
+  }
+  buf[i++] = ')';
+  (*outputFunc)(outputStream, buf, i);
 }
 
 GBool FoFiType1C::parse() {
@@ -1896,6 +2009,7 @@ GBool FoFiType1C::parse() {
 
   // for 8-bit fonts: read the private dict
   } else {
+    nFDs = 1;
     privateDicts = (Type1CPrivateDict *)gmalloc(sizeof(Type1CPrivateDict));
     readPrivateDict(topDict.privateOffset, topDict.privateSize,
 		    &privateDicts[0]);
@@ -2047,6 +2161,8 @@ void FoFiType1C::readFD(int offset, int length, Type1CPrivateDict *pDict) {
   GBool hasFontMatrix;
 
   hasFontMatrix = gFalse;
+  fontMatrix[0] = fontMatrix[1] = fontMatrix[2] = 0; // make gcc happy
+  fontMatrix[3] = fontMatrix[4] = fontMatrix[5] = 0;
   pSize = pOffset = 0;
   pos = offset;
   nOps = 0;
@@ -2261,10 +2377,10 @@ void FoFiType1C::buildEncoding() {
   int pos, c, sid, nLeft, nSups, i, j;
 
   if (topDict.encodingOffset == 0) {
-    encoding = fofiType1StandardEncoding;
+    encoding = (char **)fofiType1StandardEncoding;
 
   } else if (topDict.encodingOffset == 1) {
-    encoding = fofiType1ExpertEncoding;
+    encoding = (char **)fofiType1ExpertEncoding;
 
   } else {
     encoding = (char **)gmallocn(256, sizeof(char *));
@@ -2584,7 +2700,9 @@ char *FoFiType1C::getString(int sid, char *buf, GBool *ok) {
   Type1CIndexVal val;
   int n;
 
-  if (sid < 391) {
+  if (sid < 0) {
+    buf[0] = '\0';
+  } else if (sid < 391) {
     strcpy(buf, fofiType1CStdStrings[sid]);
   } else {
     sid -= 391;

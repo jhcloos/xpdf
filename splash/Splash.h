@@ -43,11 +43,11 @@ typedef GBool (*SplashImageSource)(void *data, SplashColorPtr colorLine,
 //------------------------------------------------------------------------
 
 enum SplashPipeResultColorCtrl {
+  splashPipeResultColorNoAlphaBlendMono,
+  splashPipeResultColorNoAlphaBlendRGB,
 #if SPLASH_CMYK
   splashPipeResultColorNoAlphaBlendCMYK,
 #endif
-  splashPipeResultColorNoAlphaBlendRGB,
-  splashPipeResultColorNoAlphaBlendMono,
   splashPipeResultColorAlphaNoBlendMono,
   splashPipeResultColorAlphaNoBlendRGB,
 #if SPLASH_CMYK
@@ -93,6 +93,7 @@ public:
   SplashCoord *getLineDash();
   int getLineDashLength();
   SplashCoord getLineDashPhase();
+  GBool getStrokeAdjust();
   SplashClip *getClip();
   SplashBitmap *getSoftMask();
   GBool getInNonIsolatedGroup();
@@ -126,6 +127,8 @@ public:
   void setSoftMask(SplashBitmap *softMask);
   void setInNonIsolatedGroup(SplashBitmap *alpha0BitmapA,
 			     int alpha0XA, int alpha0YA);
+  void setTransfer(Guchar *red, Guchar *green, Guchar *blue, Guchar *gray);
+  void setOverprintMask(Guint overprintMask);
 
   //----- state save/restore
 
@@ -208,13 +211,18 @@ public:
 
   //----- misc
 
-  // Construct a path for a stroke, given the path to be stroked, and
-  // using the current line parameters.  If <flatten> is true, this
-  // function will first flatten the path and handle the linedash.
-  SplashPath *makeStrokePath(SplashPath *path, GBool flatten = gTrue);
+  // Construct a path for a stroke, given the path to be stroked and
+  // the line width <w>.  All other stroke parameters are taken from
+  // the current state.  If <flatten> is true, this function will
+  // first flatten the path and handle the linedash.
+  SplashPath *makeStrokePath(SplashPath *path, SplashCoord w,
+			     GBool flatten = gTrue);
 
   // Return the associated bitmap.
   SplashBitmap *getBitmap() { return bitmap; }
+
+  // Set the minimum line width.
+  void setMinLineWidth(SplashCoord w) { minLineWidth = w; }
 
   // Get a bounding box which includes all modifications since the
   // last call to clearModRegion.
@@ -232,17 +240,30 @@ public:
   void setDebugMode(GBool debugModeA) { debugMode = debugModeA; }
 
 #if 1 //~tmp: turn off anti-aliasing temporarily
-  GBool getVectorAntialias() { return vectorAntialias; }
-  void setVectorAntialias(GBool vaa) { vectorAntialias = vaa; }
+  void setInShading(GBool sh) { inShading = sh; }
 #endif
 
 private:
 
   void pipeInit(SplashPipe *pipe, int x, int y,
 		SplashPattern *pattern, SplashColorPtr cSrc,
-		SplashCoord aInput, GBool usesShape,
+		Guchar aInput, GBool usesShape,
 		GBool nonIsolatedGroup);
   void pipeRun(SplashPipe *pipe);
+  void pipeRunSimpleMono1(SplashPipe *pipe);
+  void pipeRunSimpleMono8(SplashPipe *pipe);
+  void pipeRunSimpleRGB8(SplashPipe *pipe);
+  void pipeRunSimpleBGR8(SplashPipe *pipe);
+#if SPLASH_CMYK
+  void pipeRunSimpleCMYK8(SplashPipe *pipe);
+#endif
+  void pipeRunAAMono1(SplashPipe *pipe);
+  void pipeRunAAMono8(SplashPipe *pipe);
+  void pipeRunAARGB8(SplashPipe *pipe);
+  void pipeRunAABGR8(SplashPipe *pipe);
+#if SPLASH_CMYK
+  void pipeRunAACMYK8(SplashPipe *pipe);
+#endif
   void pipeSetXY(SplashPipe *pipe, int x, int y);
   void pipeIncX(SplashPipe *pipe);
   void drawPixel(SplashPipe *pipe, int x, int y, GBool noClip);
@@ -255,7 +276,7 @@ private:
   void updateModX(int x);
   void updateModY(int y);
   void strokeNarrow(SplashPath *path);
-  void strokeWide(SplashPath *path);
+  void strokeWide(SplashPath *path, SplashCoord w);
   SplashPath *flattenPath(SplashPath *path, SplashCoord *matrix,
 			  SplashCoord flatness);
   void flattenCurve(SplashCoord x0, SplashCoord y0,
@@ -267,7 +288,68 @@ private:
   SplashPath *makeDashedPath(SplashPath *xPath);
   SplashError fillWithPattern(SplashPath *path, GBool eo,
 			      SplashPattern *pattern, SplashCoord alpha);
+  GBool pathAllOutside(SplashPath *path);
   SplashError fillGlyph2(int x0, int y0, SplashGlyphBitmap *glyph);
+  void arbitraryTransformMask(SplashImageMaskSource src, void *srcData,
+			      int srcWidth, int srcHeight,
+			      SplashCoord *mat, GBool glyphMode);
+  SplashBitmap *scaleMask(SplashImageMaskSource src, void *srcData,
+			  int srcWidth, int srcHeight,
+			  int scaledWidth, int scaledHeight);
+  void scaleMaskYdXd(SplashImageMaskSource src, void *srcData,
+		     int srcWidth, int srcHeight,
+		     int scaledWidth, int scaledHeight,
+		     SplashBitmap *dest);
+  void scaleMaskYdXu(SplashImageMaskSource src, void *srcData,
+		     int srcWidth, int srcHeight,
+		     int scaledWidth, int scaledHeight,
+		     SplashBitmap *dest);
+  void scaleMaskYuXd(SplashImageMaskSource src, void *srcData,
+		     int srcWidth, int srcHeight,
+		     int scaledWidth, int scaledHeight,
+		     SplashBitmap *dest);
+  void scaleMaskYuXu(SplashImageMaskSource src, void *srcData,
+		     int srcWidth, int srcHeight,
+		     int scaledWidth, int scaledHeight,
+		     SplashBitmap *dest);
+  void blitMask(SplashBitmap *src, int xDest, int yDest,
+		SplashClipResult clipRes);
+  void arbitraryTransformImage(SplashImageSource src, void *srcData,
+			       SplashColorMode srcMode, int nComps,
+			       GBool srcAlpha,
+			       int srcWidth, int srcHeight,
+			       SplashCoord *mat);
+  SplashBitmap *scaleImage(SplashImageSource src, void *srcData,
+			   SplashColorMode srcMode, int nComps,
+			   GBool srcAlpha, int srcWidth, int srcHeight,
+			   int scaledWidth, int scaledHeight);
+  void scaleImageYdXd(SplashImageSource src, void *srcData,
+		      SplashColorMode srcMode, int nComps,
+		      GBool srcAlpha, int srcWidth, int srcHeight,
+		      int scaledWidth, int scaledHeight,
+		      SplashBitmap *dest);
+  void scaleImageYdXu(SplashImageSource src, void *srcData,
+		      SplashColorMode srcMode, int nComps,
+		      GBool srcAlpha, int srcWidth, int srcHeight,
+		      int scaledWidth, int scaledHeight,
+		      SplashBitmap *dest);
+  void scaleImageYuXd(SplashImageSource src, void *srcData,
+		      SplashColorMode srcMode, int nComps,
+		      GBool srcAlpha, int srcWidth, int srcHeight,
+		      int scaledWidth, int scaledHeight,
+		      SplashBitmap *dest);
+  void scaleImageYuXu(SplashImageSource src, void *srcData,
+		      SplashColorMode srcMode, int nComps,
+		      GBool srcAlpha, int srcWidth, int srcHeight,
+		      int scaledWidth, int scaledHeight,
+		      SplashBitmap *dest);
+  void vertFlipImage(SplashBitmap *img, int width, int height,
+		     int nComps);
+  void blitImage(SplashBitmap *src, GBool srcAlpha, int xDest, int yDest,
+		 SplashClipResult clipRes);
+  void blitImageClipped(SplashBitmap *src, GBool srcAlpha,
+			int xSrc, int ySrc, int xDest, int yDest,
+			int w, int h);
   void dumpPath(SplashPath *path);
   void dumpXPath(SplashXPath *path);
 
@@ -283,10 +365,12 @@ private:
   SplashBitmap *alpha0Bitmap;	// for non-isolated groups, this is the
 				//   bitmap containing the alpha0 values
   int alpha0X, alpha0Y;		// offset within alpha0Bitmap
-  SplashCoord aaGamma[splashAASize * splashAASize + 1];
+  Guchar aaGamma[splashAASize * splashAASize + 1];
+  SplashCoord minLineWidth;
   int modXMin, modYMin, modXMax, modYMax;
   SplashClipResult opClipRes;
   GBool vectorAntialias;
+  GBool inShading;
   GBool debugMode;
 };
 

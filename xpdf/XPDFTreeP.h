@@ -9,6 +9,7 @@
 #ifndef XPDFTREEP_H
 #define XPDFTREEP_H
 
+#include <aconf.h>
 #include <Xm/ManagerP.h>
 #include "XPDFTree.h"
 

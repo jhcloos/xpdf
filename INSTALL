@@ -1,11 +1,11 @@
 Xpdf
 ====
 
-version 3.02
-2007-feb-27
+version 3.03
+2011-aug-15
 
 The Xpdf software and documentation are
-copyright 1996-2007 Glyph & Cog, LLC.
+copyright 1996-2011 Glyph & Cog, LLC.
 
 Email: derekn@foolabs.com
 WWW: http://www.foolabs.com/xpdf/
@@ -27,15 +27,6 @@ different systems.
 **************
 ***  UNIX  ***
 **************
-
-* Install t1lib (if desired).  The resulting library (libt1) and
-  include files (t1lib.h and t1libx.h) should be placed somewhere on
-  the standard search paths.  Alternatively, when you configure xpdf,
-  you can use the following options to tell configure where to find
-  the t1lib files:
-
-    --with-t1-library=PATH
-    --with-t1-includes=PATH
 
 * Install FreeType 2 (this is required).  WARNING: You must have
   version 2.0.5 or newer.  Some older versions of XFree86 ship with an
@@ -103,6 +94,7 @@ different systems.
     xpdf/pdftotext
     xpdf/pdfinfo
     xpdf/pdffonts
+    xpdf/pdfdetach
     xpdf/pdftoppm
     xpdf/pdfimages
 
@@ -162,9 +154,9 @@ configure script version.
 ***  Win32  ***
 ***************
 
-The non-X programs (pdftops, pdftotext, pdfinfo, pdffonts, pdfimages,
-and pdftoppm) will compile with both gcc (from cygwin), djgpp (the
-Delorie port of gcc) and Microsoft Visual C++.
+The non-X programs (pdftops, pdftotext, pdfinfo, pdffonts, pdfdetach,
+pdfimages, and pdftoppm) will compile with both gcc (from cygwin),
+djgpp (the Delorie port of gcc) and Microsoft Visual C++.
 
 With cygwin, the build procedure is the same as for Unix:
 
@@ -182,22 +174,14 @@ port (thanks to Michael A. Richmond for these instructions):
   * make sure you have the lesstif, XFree86-base, and XFree86-prog
     cygwin packages installed (all from the "XFree86" category)
 
-  * to build t1lib:
-    - cd T1Lib-x.y
-    - ./configure --without-x
-    - make without_doc
-    - make install
-    (this should install /usr/local/include/t1lib.h and
-    /usr/local/lib/libt1.a)
-
   * to build xpdf:
     - cd xpdf-x.yy
     - ./configure --with-t1-library=/usr/local/lib
         --with-t1-includes=/usr/local/include
-        --with-freetype2-library=/usr/X11R6/lib
-        --with-freetype2-includes=/usr/X11R6/include/freetype2
-        --with-Xm-library=/usr/X11R6/lib
-        --with-Xm-includes=/usr/X11R6/include
+        --with-freetype2-library=/usr/lib
+        --with-freetype2-includes=/usr/include/freetype2
+        --with-Xm-library=/usr/lib
+        --with-Xm-includes=/usr/include
       (all on one line)
     - make
     (this should build xpdf.exe, in addition to the command line
@@ -245,4 +229,4 @@ With the Microsoft tools:
   * Type "ms_make"
 
 The dj_make and ms_make scripts don't build pdftoppm -- you'll need to
-install t1lib and FreeType 2 before you can compile pdftoppm.
+install FreeType 2 before you can compile pdftoppm.

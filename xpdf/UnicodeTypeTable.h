@@ -15,6 +15,10 @@ extern GBool unicodeTypeL(Unicode c);
 
 extern GBool unicodeTypeR(Unicode c);
 
+extern GBool unicodeTypeNum(Unicode c);
+
+extern GBool unicodeTypeAlphaNum(Unicode c);
+
 extern Unicode unicodeToUpper(Unicode c);
 
 #endif

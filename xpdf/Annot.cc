@@ -22,6 +22,8 @@
 #include "Gfx.h"
 #include "GfxFont.h"
 #include "Lexer.h"
+#include "PDFDoc.h"
+#include "OptionalContent.h"
 #include "Annot.h"
 
 //------------------------------------------------------------------------
@@ -84,7 +86,7 @@ AnnotBorderStyle::~AnnotBorderStyle() {
 // Annot
 //------------------------------------------------------------------------
 
-Annot::Annot(XRef *xrefA, Dict *acroForm, Dict *dict, Ref *refA) {
+Annot::Annot(PDFDoc *docA, Dict *dict, Ref *refA) {
   Object apObj, asObj, obj1, obj2, obj3;
   AnnotBorderType borderType;
   double borderWidth;
@@ -95,9 +97,11 @@ Annot::Annot(XRef *xrefA, Dict *acroForm, Dict *dict, Ref *refA) {
   int i;
 
   ok = gTrue;
-  xref = xrefA;
+  doc = docA;
+  xref = doc->getXRef();
   ref = *refA;
   type = NULL;
+  appearanceState = NULL;
   appearBuf = NULL;
   borderStyle = NULL;
 
@@ -136,7 +140,7 @@ Annot::Annot(XRef *xrefA, Dict *acroForm, Dict *dict, Ref *refA) {
       t = yMin; yMin = yMax; yMax = t;
     }
   } else {
-    error(-1, "Bad bounding box for annotation");
+    error(errSyntaxError, -1, "Bad bounding box for annotation");
     ok = gFalse;
   }
   obj1.free();
@@ -242,37 +246,53 @@ Annot::Annot(XRef *xrefA, Dict *acroForm, Dict *dict, Ref *refA) {
 				     borderDash, borderDashLength,
 				     borderR, borderG, borderB);
 
+  //----- get the appearance state
+
+  dict->lookup("AP", &apObj);
+  dict->lookup("AS", &asObj);
+  if (asObj.isName()) {
+    appearanceState = new GString(asObj.getName());
+  } else if (apObj.isDict()) {
+    apObj.dictLookup("N", &obj1);
+    if (obj1.isDict() && obj1.dictGetLength() == 1) {
+      appearanceState = new GString(obj1.dictGetKey(0));
+    }
+    obj1.free();
+  }
+  if (!appearanceState) {
+    appearanceState = new GString("Off");
+  }
+  asObj.free();
+
   //----- get the annotation appearance
 
-  if (dict->lookup("AP", &apObj)->isDict()) {
-    if (dict->lookup("AS", &asObj)->isName()) {
-      if (apObj.dictLookup("N", &obj1)->isDict()) {
-	if (obj1.dictLookupNF(asObj.getName(), &obj2)->isRef()) {
-	  obj2.copy(&appearance);
-	  ok = gTrue;
-	} else {
-	  obj2.free();
-	  if (obj1.dictLookupNF("Off", &obj2)->isRef()) {
-	    obj2.copy(&appearance);
-	  }
-	}
-	obj2.free();
+  if (apObj.isDict()) {
+    apObj.dictLookup("N", &obj1);
+    apObj.dictLookupNF("N", &obj2);
+    if (obj1.isDict()) {
+      if (obj1.dictLookupNF(appearanceState->getCString(), &obj3)->isRef()) {
+	obj3.copy(&appearance);
       }
-      obj1.free();
-    } else {
-      if (apObj.dictLookupNF("N", &obj1)->isRef()) {
-	obj1.copy(&appearance);
-      }
-      obj1.free();
+      obj3.free();
+    } else if (obj2.isRef()) {
+      obj2.copy(&appearance);
     }
-    asObj.free();
+    obj1.free();
+    obj2.free();
   }
   apObj.free();
+
+  //----- get the optional content entry
+
+  dict->lookupNF("OC", &ocObj);
 }
 
 Annot::~Annot() {
   if (type) {
     delete type;
+  }
+  if (appearanceState) {
+    delete appearanceState;
   }
   appearance.free();
   if (appearBuf) {
@@ -281,6 +301,7 @@ Annot::~Annot() {
   if (borderStyle) {
     delete borderStyle;
   }
+  ocObj.free();
 }
 
 void Annot::generateFieldAppearance(Dict *field, Dict *annot, Dict *acroForm) {
@@ -294,10 +315,10 @@ void Annot::generateFieldAppearance(Dict *field, Dict *annot, Dict *acroForm) {
   GString *caption, *da;
   GString **text;
   GBool *selection;
-  int dashLength, ff, quadding, comb, nOptions, topIdx, i, j;
+  int rot, dashLength, ff, quadding, comb, nOptions, topIdx, i, j;
 
   // must be a Widget annotation
-  if (type->cmp("Widget")) {
+  if (type && type->cmp("Widget")) {
     return;
   }
 
@@ -322,10 +343,10 @@ void Annot::generateFieldAppearance(Dict *field, Dict *annot, Dict *acroForm) {
   }
 
   // get the field type
-  fieldLookup(field, "FT", &ftObj);
+  fieldLookup(field, acroForm, "FT", &ftObj);
 
   // get the field flags (Ff) value
-  if (fieldLookup(field, "Ff", &obj1)->isInt()) {
+  if (fieldLookup(field, acroForm, "Ff", &obj1)->isInt()) {
     ff = obj1.getInt();
   } else {
     ff = 0;
@@ -432,18 +453,18 @@ void Annot::generateFieldAppearance(Dict *field, Dict *annot, Dict *acroForm) {
   }
 
   // get the resource dictionary
-  acroForm->lookup("DR", &drObj);
+  fieldLookup(field, acroForm, "DR", &drObj);
 
   // build the font dictionary
   if (drObj.isDict() && drObj.dictLookup("Font", &obj1)->isDict()) {
-    fontDict = new GfxFontDict(xref, NULL, obj1.getDict());
+    fontDict = new GfxFontDict(doc->getXRef(), NULL, obj1.getDict());
   } else {
     fontDict = NULL;
   }
   obj1.free();
 
   // get the default appearance string
-  if (fieldLookup(field, "DA", &obj1)->isNull()) {
+  if (fieldLookup(field, acroForm, "DA", &obj1)->isNull()) {
     obj1.free();
     acroForm->lookup("DA", &obj1);
   }
@@ -453,6 +474,15 @@ void Annot::generateFieldAppearance(Dict *field, Dict *annot, Dict *acroForm) {
     da = NULL;
   }
   obj1.free();
+
+  // get the rotation value
+  rot = 0;
+  if (mkDict) {
+    if (mkDict->lookup("R", &obj1)->isInt()) {
+      rot = obj1.getInt();
+    }
+    obj1.free();
+  }
 
   // draw the field contents
   if (ftObj.isName("Btn")) {
@@ -466,45 +496,41 @@ void Annot::generateFieldAppearance(Dict *field, Dict *annot, Dict *acroForm) {
     // radio button
     if (ff & fieldFlagRadio) {
       //~ Acrobat doesn't draw a caption if there is no AP dict (?)
-      if (fieldLookup(field, "V", &obj1)->isName()) {
-	if (annot->lookup("AS", &obj2)->isName(obj1.getName())) {
-	  if (caption) {
-	    drawText(caption, da, fontDict, gFalse, 0, fieldQuadCenter,
-		     gFalse, gTrue);
-	  } else {
-	    if (mkDict) {
-	      if (mkDict->lookup("BC", &obj3)->isArray() &&
-		  obj3.arrayGetLength() > 0) {
-		dx = xMax - xMin;
-		dy = yMax - yMin;
-		setColor(obj3.getArray(), gTrue, 0);
-		drawCircle(0.5 * dx, 0.5 * dy, 0.2 * (dx < dy ? dx : dy),
-			   gTrue);
-	      }
-	      obj3.free();
+      if (fieldLookup(field, acroForm, "V", &obj1)
+	    ->isName(appearanceState->getCString())) {
+	if (caption) {
+	  drawText(caption, da, fontDict, gFalse, 0, fieldQuadCenter,
+		   gFalse, gTrue, rot);
+	} else {
+	  if (mkDict) {
+	    if (mkDict->lookup("BC", &obj2)->isArray() &&
+		obj2.arrayGetLength() > 0) {
+	      dx = xMax - xMin;
+	      dy = yMax - yMin;
+	      setColor(obj2.getArray(), gTrue, 0);
+	      drawCircle(0.5 * dx, 0.5 * dy, 0.2 * (dx < dy ? dx : dy),
+			 gTrue);
 	    }
+	    obj2.free();
 	  }
 	}
-	obj2.free();
       }
       obj1.free();
     // pushbutton
     } else if (ff & fieldFlagPushbutton) {
       if (caption) {
 	drawText(caption, da, fontDict, gFalse, 0, fieldQuadCenter,
-		 gFalse, gFalse);
+		 gFalse, gFalse, rot);
       }
     // checkbox
     } else {
-      // According to the PDF spec the off state must be named "Off",
-      // and the on state can be named anything, but Acrobat apparently
-      // looks for "Yes" and treats anything else as off.
-      if (fieldLookup(field, "V", &obj1)->isName("Yes")) {
+      fieldLookup(field, acroForm, "V", &obj1);
+      if (obj1.isName() && !obj1.isName("Off")) {
 	if (!caption) {
 	  caption = new GString("3"); // ZapfDingbats checkmark
 	}
 	drawText(caption, da, fontDict, gFalse, 0, fieldQuadCenter,
-		 gFalse, gTrue);
+		 gFalse, gTrue, rot);
       }
       obj1.free();
     }
@@ -513,8 +539,12 @@ void Annot::generateFieldAppearance(Dict *field, Dict *annot, Dict *acroForm) {
     }
   } else if (ftObj.isName("Tx")) {
     //~ value strings can be Unicode
-    if (fieldLookup(field, "V", &obj1)->isString()) {
-      if (fieldLookup(field, "Q", &obj2)->isInt()) {
+    if (!fieldLookup(field, acroForm, "V", &obj1)->isString()) {
+      obj1.free();
+      fieldLookup(field, acroForm, "DV", &obj1);
+    }
+    if (obj1.isString()) {
+      if (fieldLookup(field, acroForm, "Q", &obj2)->isInt()) {
 	quadding = obj2.getInt();
       } else {
 	quadding = fieldQuadLeft;
@@ -522,18 +552,18 @@ void Annot::generateFieldAppearance(Dict *field, Dict *annot, Dict *acroForm) {
       obj2.free();
       comb = 0;
       if (ff & fieldFlagComb) {
-	if (fieldLookup(field, "MaxLen", &obj2)->isInt()) {
+	if (fieldLookup(field, acroForm, "MaxLen", &obj2)->isInt()) {
 	  comb = obj2.getInt();
 	}
 	obj2.free();
       }
       drawText(obj1.getString(), da, fontDict,
-	       ff & fieldFlagMultiline, comb, quadding, gTrue, gFalse);
+	       ff & fieldFlagMultiline, comb, quadding, gTrue, gFalse, rot);
     }
     obj1.free();
   } else if (ftObj.isName("Ch")) {
     //~ value/option strings can be Unicode
-    if (fieldLookup(field, "Q", &obj1)->isInt()) {
+    if (fieldLookup(field, acroForm, "Q", &obj1)->isInt()) {
       quadding = obj1.getInt();
     } else {
       quadding = fieldQuadLeft;
@@ -541,9 +571,9 @@ void Annot::generateFieldAppearance(Dict *field, Dict *annot, Dict *acroForm) {
     obj1.free();
     // combo box
     if (ff & fieldFlagCombo) {
-      if (fieldLookup(field, "V", &obj1)->isString()) {
+      if (fieldLookup(field, acroForm, "V", &obj1)->isString()) {
 	drawText(obj1.getString(), da, fontDict,
-		 gFalse, 0, quadding, gTrue, gFalse);
+		 gFalse, 0, quadding, gTrue, gFalse, rot);
 	//~ Acrobat draws a popup icon on the right side
       }
       obj1.free();
@@ -572,7 +602,7 @@ void Annot::generateFieldAppearance(Dict *field, Dict *annot, Dict *acroForm) {
 	// get the selected option(s)
 	selection = (GBool *)gmallocn(nOptions, sizeof(GBool));
 	//~ need to use the I field in addition to the V field
-	fieldLookup(field, "V", &obj2);
+	fieldLookup(field, acroForm, "V", &obj2);
 	for (i = 0; i < nOptions; ++i) {
 	  selection[i] = gFalse;
 	  if (obj2.isString()) {
@@ -610,7 +640,7 @@ void Annot::generateFieldAppearance(Dict *field, Dict *annot, Dict *acroForm) {
   } else if (ftObj.isName("Sig")) {
     //~unimp
   } else {
-    error(-1, "Unknown field type");
+    error(errSyntaxError, -1, "Unknown field type");
   }
 
   if (da) {
@@ -618,11 +648,11 @@ void Annot::generateFieldAppearance(Dict *field, Dict *annot, Dict *acroForm) {
   }
 
   // build the appearance stream dictionary
-  appearDict.initDict(xref);
+  appearDict.initDict(doc->getXRef());
   appearDict.dictAdd(copyString("Length"),
 		     obj1.initInt(appearBuf->getLength()));
   appearDict.dictAdd(copyString("Subtype"), obj1.initName("Form"));
-  obj1.initArray(xref);
+  obj1.initArray(doc->getXRef());
   obj1.arrayAdd(obj2.initReal(0));
   obj1.arrayAdd(obj2.initReal(0));
   obj1.arrayAdd(obj2.initReal(xMax - xMin));
@@ -699,16 +729,35 @@ void Annot::setColor(Array *a, GBool fill, int adjust) {
 // Draw the variable text or caption for a field.
 void Annot::drawText(GString *text, GString *da, GfxFontDict *fontDict,
 		     GBool multiline, int comb, int quadding,
-		     GBool txField, GBool forceZapfDingbats) {
+		     GBool txField, GBool forceZapfDingbats, int rot) {
+  GString *text2;
   GList *daToks;
   GString *tok;
   GfxFont *font;
+  double dx, dy;
   double fontSize, fontSize2, border, x, xPrev, y, w, w2, wMax;
   int tfPos, tmPos, i, j, k, c;
 
   //~ if there is no MK entry, this should use the existing content stream,
   //~ and only replace the marked content portion of it
   //~ (this is only relevant for Tx fields)
+
+  // check for a Unicode string
+  //~ this currently drops all non-Latin1 characters
+  if (text->getLength() >= 2 &&
+      text->getChar(0) == '\xfe' && text->getChar(1) == '\xff') {
+    text2 = new GString();
+    for (i = 2; i+1 < text->getLength(); i += 2) {
+      c = ((text->getChar(i) & 0xff) << 8) + (text->getChar(i+1) & 0xff);
+      if (c <= 0xff) {
+	text2->append((char)c);
+      } else {
+	text2->append('?');
+      }
+    }
+  } else {
+    text2 = text;
+  }
 
   // parse the default appearance string
   tfPos = tmPos = -1;
@@ -757,15 +806,16 @@ void Annot::drawText(GString *text, GString *da, GfxFontDict *fontDict,
     tok = (GString *)daToks->get(tfPos);
     if (tok->getLength() >= 1 && tok->getChar(0) == '/') {
       if (!fontDict || !(font = fontDict->lookup(tok->getCString() + 1))) {
-	error(-1, "Unknown font in field's DA string");
+	error(errSyntaxError, -1, "Unknown font in field's DA string");
       }
     } else {
-      error(-1, "Invalid font name in 'Tf' operator in field's DA string");
+      error(errSyntaxError, -1,
+	    "Invalid font name in 'Tf' operator in field's DA string");
     }
     tok = (GString *)daToks->get(tfPos + 1);
     fontSize = atof(tok->getCString());
   } else {
-    error(-1, "Missing 'Tf' operator in field's DA string");
+    error(errSyntaxError, -1, "Missing 'Tf' operator in field's DA string");
   }
 
   // get the border width
@@ -776,22 +826,39 @@ void Annot::drawText(GString *text, GString *da, GfxFontDict *fontDict,
     appearBuf->append("/Tx BMC\n");
   }
   appearBuf->append("q\n");
+  if (rot == 90) {
+    appearBuf->appendf("0 1 -1 0 {0:.2f} 0 cm\n", xMax - xMin);
+    dx = yMax - yMin;
+    dy = xMax - xMin;
+  } else if (rot == 180) {
+    appearBuf->appendf("-1 0 0 -1 {0:.2f} {1:.2f} cm\n",
+		       xMax - xMin, yMax - yMin);
+    dx = xMax - yMax;
+    dy = yMax - yMin;
+  } else if (rot == 270) {
+    appearBuf->appendf("0 -1 1 0 0 {0:.2f} cm\n", yMax - yMin);
+    dx = yMax - yMin;
+    dy = xMax - xMin;
+  } else { // assume rot == 0
+    dx = xMax - xMin;
+    dy = yMax - yMin;
+  }
   appearBuf->append("BT\n");
 
   // multi-line text
   if (multiline) {
     // note: the comb flag is ignored in multiline mode
 
-    wMax = xMax - xMin - 2 * border - 4;
+    wMax = dx - 2 * border - 4;
 
     // compute font autosize
     if (fontSize == 0) {
       for (fontSize = 20; fontSize > 1; --fontSize) {
-	y = yMax - yMin;
+	y = dy - 3;
 	w2 = 0;
 	i = 0;
-	while (i < text->getLength()) {
-	  getNextLine(text, i, font, fontSize, wMax, &j, &w, &k);
+	while (i < text2->getLength()) {
+	  getNextLine(text2, i, font, fontSize, wMax, &j, &w, &k);
 	  if (w > w2) {
 	    w2 = w;
 	  }
@@ -813,7 +880,7 @@ void Annot::drawText(GString *text, GString *da, GfxFontDict *fontDict,
     // starting y coordinate
     // (note: each line of text starts with a Td operator that moves
     // down a line)
-    y = yMax - yMin;
+    y = dy - 3;
 
     // set the font matrix
     if (tmPos >= 0) {
@@ -840,9 +907,9 @@ void Annot::drawText(GString *text, GString *da, GfxFontDict *fontDict,
     // write a series of lines of text
     i = 0;
     xPrev = 0;
-    while (i < text->getLength()) {
+    while (i < text2->getLength()) {
 
-      getNextLine(text, i, font, fontSize, wMax, &j, &w, &k);
+      getNextLine(text2, i, font, fontSize, wMax, &j, &w, &k);
 
       // compute text start position
       switch (quadding) {
@@ -851,10 +918,10 @@ void Annot::drawText(GString *text, GString *da, GfxFontDict *fontDict,
 	x = border + 2;
 	break;
       case fieldQuadCenter:
-	x = (xMax - xMin - w) / 2;
+	x = (dx - w) / 2;
 	break;
       case fieldQuadRight:
-	x = xMax - xMin - border - 2 - w;
+	x = dx - border - 2 - w;
 	break;
       }
 
@@ -862,7 +929,7 @@ void Annot::drawText(GString *text, GString *da, GfxFontDict *fontDict,
       appearBuf->appendf("{0:.2f} {1:.2f} Td\n", x - xPrev, -fontSize);
       appearBuf->append('(');
       for (; i < j; ++i) {
-	c = text->getChar(i) & 0xff;
+	c = text2->getChar(i) & 0xff;
 	if (c == '(' || c == ')' || c == '\\') {
 	  appearBuf->append('\\');
 	  appearBuf->append(c);
@@ -887,11 +954,11 @@ void Annot::drawText(GString *text, GString *da, GfxFontDict *fontDict,
     if (comb > 0) {
 
       // compute comb spacing
-      w = (xMax - xMin - 2 * border) / comb;
+      w = (dx - 2 * border) / comb;
 
       // compute font autosize
       if (fontSize == 0) {
-	fontSize = yMax - yMin - 2 * border;
+	fontSize = dy - 2 * border;
 	if (w < fontSize) {
 	  fontSize = w;
 	}
@@ -910,13 +977,13 @@ void Annot::drawText(GString *text, GString *da, GfxFontDict *fontDict,
 	x = border + 2;
 	break;
       case fieldQuadCenter:
-	x = border + 2 + 0.5 * (comb - text->getLength()) * w;
+	x = border + 2 + 0.5 * (comb - text2->getLength()) * w;
 	break;
       case fieldQuadRight:
-	x = border + 2 + (comb - text->getLength()) * w;
+	x = border + 2 + (comb - text2->getLength()) * w;
 	break;
       }
-      y = 0.5 * (yMax - yMin) - 0.4 * fontSize;
+      y = 0.5 * dy - 0.4 * fontSize;
 
       // set the font matrix
       if (tmPos >= 0) {
@@ -943,12 +1010,12 @@ void Annot::drawText(GString *text, GString *da, GfxFontDict *fontDict,
       // write the text string
       //~ this should center (instead of left-justify) each character within
       //~     its comb cell
-      for (i = 0; i < text->getLength(); ++i) {
+      for (i = 0; i < text2->getLength(); ++i) {
 	if (i > 0) {
 	  appearBuf->appendf("{0:.2f} 0 Td\n", w);
 	}
 	appearBuf->append('(');
-	c = text->getChar(i) & 0xff;
+	c = text2->getChar(i) & 0xff;
 	if (c == '(' || c == ')' || c == '\\') {
 	  appearBuf->append('\\');
 	  appearBuf->append(c);
@@ -966,18 +1033,18 @@ void Annot::drawText(GString *text, GString *da, GfxFontDict *fontDict,
       // compute string width
       if (font && !font->isCIDFont()) {
 	w = 0;
-	for (i = 0; i < text->getLength(); ++i) {
-	  w += ((Gfx8BitFont *)font)->getWidth(text->getChar(i));
+	for (i = 0; i < text2->getLength(); ++i) {
+	  w += ((Gfx8BitFont *)font)->getWidth(text2->getChar(i));
 	}
       } else {
 	// otherwise, make a crude estimate
-	w = text->getLength() * 0.5;
+	w = text2->getLength() * 0.5;
       }
 
       // compute font autosize
       if (fontSize == 0) {
-	fontSize = yMax - yMin - 2 * border;
-	fontSize2 = (xMax - xMin - 4 - 2 * border) / w;
+	fontSize = dy - 2 * border;
+	fontSize2 = (dx - 4 - 2 * border) / w;
 	if (fontSize2 < fontSize) {
 	  fontSize = fontSize2;
 	}
@@ -997,13 +1064,13 @@ void Annot::drawText(GString *text, GString *da, GfxFontDict *fontDict,
 	x = border + 2;
 	break;
       case fieldQuadCenter:
-	x = (xMax - xMin - w) / 2;
+	x = (dx - w) / 2;
 	break;
       case fieldQuadRight:
-	x = xMax - xMin - border - 2 - w;
+	x = dx - border - 2 - w;
 	break;
       }
-      y = 0.5 * (yMax - yMin) - 0.4 * fontSize;
+      y = 0.5 * dy - 0.4 * fontSize;
 
       // set the font matrix
       if (tmPos >= 0) {
@@ -1029,8 +1096,8 @@ void Annot::drawText(GString *text, GString *da, GfxFontDict *fontDict,
 
       // write the text string
       appearBuf->append('(');
-      for (i = 0; i < text->getLength(); ++i) {
-	c = text->getChar(i) & 0xff;
+      for (i = 0; i < text2->getLength(); ++i) {
+	c = text2->getChar(i) & 0xff;
 	if (c == '(' || c == ')' || c == '\\') {
 	  appearBuf->append('\\');
 	  appearBuf->append(c);
@@ -1053,6 +1120,9 @@ void Annot::drawText(GString *text, GString *da, GfxFontDict *fontDict,
 
   if (daToks) {
     deleteGList(daToks, GString);
+  }
+  if (text2 != text) {
+    delete text2;
   }
 }
 
@@ -1105,15 +1175,16 @@ void Annot::drawListBox(GString **text, GBool *selection,
     tok = (GString *)daToks->get(tfPos);
     if (tok->getLength() >= 1 && tok->getChar(0) == '/') {
       if (!fontDict || !(font = fontDict->lookup(tok->getCString() + 1))) {
-	error(-1, "Unknown font in field's DA string");
+	error(errSyntaxError, -1, "Unknown font in field's DA string");
       }
     } else {
-      error(-1, "Invalid font name in 'Tf' operator in field's DA string");
+      error(errSyntaxError, -1,
+	    "Invalid font name in 'Tf' operator in field's DA string");
     }
     tok = (GString *)daToks->get(tfPos + 1);
     fontSize = atof(tok->getCString());
   } else {
-    error(-1, "Missing 'Tf' operator in field's DA string");
+    error(errSyntaxError, -1, "Missing 'Tf' operator in field's DA string");
   }
 
   // get the border width
@@ -1391,7 +1462,8 @@ void Annot::drawCircleBottomRight(double cx, double cy, double r) {
 }
 
 // Look up an inheritable field dictionary entry.
-Object *Annot::fieldLookup(Dict *field, char *key, Object *obj) {
+Object *Annot::fieldLookup(Dict *field, Dict *acroForm,
+			   const char *key, Object *obj) {
   Dict *dict;
   Object parent;
 
@@ -1401,7 +1473,11 @@ Object *Annot::fieldLookup(Dict *field, char *key, Object *obj) {
   }
   obj->free();
   if (dict->lookup("Parent", &parent)->isDict()) {
-    fieldLookup(parent.getDict(), key, obj);
+    fieldLookup(parent.getDict(), acroForm, key, obj);
+  } else if (acroForm) {
+    // some fields don't specify a parent, so we check the AcroForm
+    // dictionary just in case
+    fieldLookup(acroForm, NULL, key, obj);
   } else {
     obj->initNull();
   }
@@ -1411,7 +1487,7 @@ Object *Annot::fieldLookup(Dict *field, char *key, Object *obj) {
 
 void Annot::draw(Gfx *gfx, GBool printing) {
   Object obj;
-  GBool isLink;
+  GBool oc, isLink;
 
   // check the flags
   if ((flags & annotFlagHidden) ||
@@ -1420,32 +1496,44 @@ void Annot::draw(Gfx *gfx, GBool printing) {
     return;
   }
 
+  // check the optional content entry
+  if (doc->getOptionalContent()->evalOCObject(&ocObj, &oc) && !oc) {
+    return;
+  }
+
   // draw the appearance stream
   isLink = type && !type->cmp("Link");
-  appearance.fetch(xref, &obj);
+  appearance.fetch(doc->getXRef(), &obj);
   gfx->drawAnnot(&obj, isLink ? borderStyle : (AnnotBorderStyle *)NULL,
 		 xMin, yMin, xMax, yMax);
   obj.free();
+}
+
+Object *Annot::getObject(Object *obj) {
+  if (ref.num >= 0) {
+    xref->fetch(ref.num, ref.gen, obj);
+  } else {
+    obj->initNull();
+  }
+  return obj;
 }
 
 //------------------------------------------------------------------------
 // Annots
 //------------------------------------------------------------------------
 
-Annots::Annots(XRef *xref, Catalog *catalog, Object *annotsObj) {
-  Dict *acroForm;
+Annots::Annots(PDFDoc *docA, Object *annotsObj) {
   Annot *annot;
   Object obj1;
   Ref ref;
   int size;
   int i;
 
+  doc = docA;
   annots = NULL;
   size = 0;
   nAnnots = 0;
 
-  acroForm = catalog->getAcroForm()->isDict() ?
-               catalog->getAcroForm()->getDict() : NULL;
   if (annotsObj->isArray()) {
     for (i = 0; i < annotsObj->arrayGetLength(); ++i) {
       if (annotsObj->arrayGetNF(i, &obj1)->isRef()) {
@@ -1456,7 +1544,7 @@ Annots::Annots(XRef *xref, Catalog *catalog, Object *annotsObj) {
 	ref.num = ref.gen = -1;
       }
       if (obj1.isDict()) {
-	annot = new Annot(xref, acroForm, obj1.getDict(), &ref);
+	annot = new Annot(doc, obj1.getDict(), &ref);
 	if (annot->isOk()) {
 	  if (nAnnots >= size) {
 	    size += 16;
@@ -1481,11 +1569,14 @@ Annots::~Annots() {
   gfree(annots);
 }
 
-void Annots::generateAppearances(Dict *acroForm) {
+void Annots::generateAppearances() {
+  Dict *acroForm;
   Object obj1, obj2;
   Ref ref;
   int i;
 
+  acroForm = doc->getCatalog()->getAcroForm()->isDict() ?
+               doc->getCatalog()->getAcroForm()->getDict() : NULL;
   if (acroForm->lookup("Fields", &obj1)->isArray()) {
     for (i = 0; i < obj1.arrayGetLength(); ++i) {
       if (obj1.arrayGetNF(i, &obj2)->isRef()) {

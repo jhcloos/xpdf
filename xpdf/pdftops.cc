@@ -280,7 +280,7 @@ int main(int argc, char *argv[]) {
 
   // check for print permission
   if (!doc->okToPrint()) {
-    error(-1, "Printing this document is not allowed.");
+    error(errNotAllowed, -1, "Printing this document is not allowed.");
     exitCode = 3;
     goto err1;
   }
@@ -309,13 +309,13 @@ int main(int argc, char *argv[]) {
 
   // check for multi-page EPS or form
   if ((doEPS || doForm) && firstPage != lastPage) {
-    error(-1, "EPS and form files can only contain one page.");
+    error(errCommandLine, -1, "EPS and form files can only contain one page.");
     goto err2;
   }
 
   // write PostScript file
-  psOut = new PSOutputDev(psFileName->getCString(), doc->getXRef(),
-			  doc->getCatalog(), firstPage, lastPage, mode);
+  psOut = new PSOutputDev(psFileName->getCString(), doc,
+			  firstPage, lastPage, mode);
   if (psOut->isOk()) {
     doc->displayPages(psOut, firstPage, lastPage, 72, 72,
 		      0, !pageCrop, globalParams->getPSCrop(), gTrue);

@@ -6,6 +6,7 @@
 //
 //========================================================================
 
+#include <aconf.h>
 #include <stdlib.h>
 #include "gmem.h"
 #include "XPDFTreeP.h"
@@ -721,6 +722,7 @@ static int layoutSubtree(XPDFTreeWidget w, Widget instigator,
   Widget ew;
   XPDFTreeEntry *child;
   XPDFTreeConstraint c;
+  int dy;
 
   ew = e->widget;
   if (!XtIsManaged(ew)) {
@@ -743,7 +745,14 @@ static int layoutSubtree(XPDFTreeWidget w, Widget instigator,
 			   ew->core.border_width);
 #endif
       }
-      y += ew->core.height + 2 * ew->core.border_width;
+      dy = ew->core.height + 2 * ew->core.border_width;
+      // this is a kludge to avoid crashes if the widget becomes too
+      // tall
+      if ((int)y + dy > 32767) {
+	y = 32767;
+      } else {
+	y += dy;
+      }
     }
   }
 
@@ -762,7 +771,8 @@ static void calcSize(Widget widget, Widget instigator,
 		     Dimension *totalHeight) {
   XPDFTreeWidget w = (XPDFTreeWidget)widget;
   XPDFTreeEntry *e;
-  Dimension w1, h1, w2, h2;
+  int h1;
+  Dimension w1, w2, h2;
 
   w1 = h1 = 0;
   for (e = w->tree.root; e; e = e->next) {
@@ -770,18 +780,22 @@ static void calcSize(Widget widget, Widget instigator,
     if (w2 > w1) {
       w1 = w2;
     }
-    h1 += h2;
+    h1 += (int)h2;
   }
   w1 += xpdfTreeIndent + 2 * w->tree.marginWidth;
-  h1 += 2 * w->tree.marginHeight;
+  h1 += 2 * (int)w->tree.marginHeight;
   if (h1 == 0) {
     h1 = 1;
+  } else if (h1 > 32767) {
+    // this is a kludge to avoid crashes if the widget becomes too
+    // tall
+    h1 = 32767;
   }
   if (!*totalWidth) {
     *totalWidth = w1;
   }
   if (!*totalHeight) {
-    *totalHeight = h1;
+    *totalHeight = (Dimension)h1;
   }
 }
 
@@ -792,7 +806,8 @@ static void calcSubtreeSize(XPDFTreeWidget w, Widget instigator,
   XPDFTreeEntry *child;
   XPDFTreeConstraint c;
   XtWidgetGeometry geom;
-  Dimension w1, h1, w2, h2;
+  int h1;
+  Dimension w1, w2, h2;
   
   ew = e->widget;
   if (!XtIsManaged(ew)) {
@@ -809,13 +824,14 @@ static void calcSubtreeSize(XPDFTreeWidget w, Widget instigator,
     }
     if (ew == instigator) {
       w1 = ew->core.width;
-      h1 = ew->core.height;
+      h1 = (int)ew->core.height;
     } else {
       XtQueryGeometry(ew, NULL, &geom);
       w1 = (geom.request_mode & CWWidth) ? geom.width : ew->core.width;
-      h1 = (geom.request_mode & CWHeight) ? geom.height : ew->core.height;
+      h1 = (int)((geom.request_mode & CWHeight) ? geom.height
+		                                : ew->core.height);
     }
-    h1 += 2 * ew->core.border_width;
+    h1 += 2 * (int)ew->core.border_width;
   } else {
     // root of tree
     w1 = 0;
@@ -830,10 +846,14 @@ static void calcSubtreeSize(XPDFTreeWidget w, Widget instigator,
       if (w2 > w1) {
 	w1 = w2;
       }
-      h1 += h2;
+      h1 += (int)h2;
     }
   }
 
+  // this is a kludge to avoid crashes if the widget becomes too tall
+  if (h1 > 32767) {
+    h1 = 32767;
+  }
   *width = w1;
   *height = h1;
 }

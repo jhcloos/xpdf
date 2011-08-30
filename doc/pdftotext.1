@@ -1,8 +1,8 @@
-.\" Copyright 1997-2007 Glyph & Cog, LLC
-.TH pdftotext 1 "27 Febuary 2007"
+.\" Copyright 1997-2011 Glyph & Cog, LLC
+.TH pdftotext 1 "15 August 2011"
 .SH NAME
 pdftotext \- Portable Document Format (PDF) to text converter
-(version 3.02)
+(version 3.03)
 .SH SYNOPSIS
 .B pdftotext
 [options]
@@ -48,6 +48,10 @@ Specifies the last page to convert.
 Maintain (as best as possible) the original physical layout of the
 text.  The default is to \'undo' physical layout (columns,
 hyphenation, etc.) and output the text in reading order.
+.TP
+.BI \-fixed " number"
+Assume fixed-pitch (or tabular) text, with the specified character
+width (in points).  This forces physical layout mode.
 .TP
 .B \-raw
 Keep the text in content stream order.  This is a hack which often
@@ -123,13 +127,14 @@ Error related to PDF permissions.
 99
 Other error.
 .SH AUTHOR
-The pdftotext software and documentation are copyright 1996-2007 Glyph
+The pdftotext software and documentation are copyright 1996-2011 Glyph
 & Cog, LLC.
 .SH "SEE ALSO"
 .BR xpdf (1),
 .BR pdftops (1),
 .BR pdfinfo (1),
 .BR pdffonts (1),
+.BR pdfdetach (1),
 .BR pdftoppm (1),
 .BR pdfimages (1),
 .BR xpdfrc (5)

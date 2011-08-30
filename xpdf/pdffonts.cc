@@ -12,6 +12,7 @@
 #include <stddef.h>
 #include <string.h>
 #include <math.h>
+#include <limits.h>
 #include "parseargs.h"
 #include "GString.h"
 #include "gmem.h"
@@ -25,7 +26,7 @@
 #include "config.h"
 
 // NB: this must match the definition of GfxFontType in GfxFont.h.
-static char *fontTypeNames[] = {
+static const char *fontTypeNames[] = {
   "unknown",
   "Type 1",
   "Type 1C",
@@ -149,8 +150,7 @@ int main(int argc, char *argv[]) {
     if ((resDict = page->getResourceDict())) {
       scanFonts(resDict, doc);
     }
-    annots = new Annots(doc->getXRef(), doc->getCatalog(),
-			page->getAnnots(&obj1));
+    annots = new Annots(doc, page->getAnnots(&obj1));
     obj1.free();
     for (i = 0; i < annots->getNumAnnots(); ++i) {
       if (annots->getAnnot(i)->getAppearance(&obj1)->isStream()) {
@@ -247,7 +247,7 @@ static void scanFont(GfxFont *font, PDFDoc *doc) {
   }
 
   // font name
-  name = font->getOrigName();
+  name = font->getName();
 
   // check for an embedded font
   if (font->getType() == fontType3) {
@@ -291,7 +291,12 @@ static void scanFont(GfxFont *font, PDFDoc *doc) {
 
   // add this font to the list
   if (fontsLen == fontsSize) {
-    fontsSize += 32;
+    if (fontsSize <= INT_MAX - 32) {
+      fontsSize += 32;
+    } else {
+      // let greallocn throw an exception
+      fontsSize = -1;
+    }
     fonts = (Ref *)greallocn(fonts, fontsSize, sizeof(Ref));
   }
   fonts[fontsLen++] = *font->getID();

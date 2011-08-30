@@ -50,8 +50,8 @@ SplashClip::SplashClip(SplashCoord x0, SplashCoord y0,
   }
   xMinI = splashFloor(xMin);
   yMinI = splashFloor(yMin);
-  xMaxI = splashFloor(xMax);
-  yMaxI = splashFloor(yMax);
+  xMaxI = splashCeil(xMax) - 1;
+  yMaxI = splashCeil(yMax) - 1;
   paths = NULL;
   flags = NULL;
   scanners = NULL;
@@ -59,6 +59,7 @@ SplashClip::SplashClip(SplashCoord x0, SplashCoord y0,
 }
 
 SplashClip::SplashClip(SplashClip *clip) {
+  int yMinAA, yMaxAA;
   int i;
 
   antialias = clip->antialias;
@@ -79,7 +80,15 @@ SplashClip::SplashClip(SplashClip *clip) {
   for (i = 0; i < length; ++i) {
     paths[i] = clip->paths[i]->copy();
     flags[i] = clip->flags[i];
-    scanners[i] = new SplashXPathScanner(paths[i], flags[i] & splashClipEO);
+    if (antialias) {
+      yMinAA = yMinI * splashAASize;
+      yMaxAA = (yMaxI + 1) * splashAASize - 1;
+    } else {
+      yMinAA = yMinI;
+      yMaxAA = yMaxI;
+    }
+    scanners[i] = new SplashXPathScanner(paths[i], flags[i] & splashClipEO,
+					 yMinAA, yMaxAA);
   }
 }
 
@@ -142,8 +151,8 @@ void SplashClip::resetToRect(SplashCoord x0, SplashCoord y0,
   }
   xMinI = splashFloor(xMin);
   yMinI = splashFloor(yMin);
-  xMaxI = splashFloor(xMax);
-  yMaxI = splashFloor(yMax);
+  xMaxI = splashCeil(xMax) - 1;
+  yMaxI = splashCeil(yMax) - 1;
 }
 
 SplashError SplashClip::clipToRect(SplashCoord x0, SplashCoord y0,
@@ -155,7 +164,7 @@ SplashError SplashClip::clipToRect(SplashCoord x0, SplashCoord y0,
     }
     if (x1 < xMax) {
       xMax = x1;
-      xMaxI = splashFloor(xMax);
+      xMaxI = splashCeil(xMax) - 1;
     }
   } else {
     if (x1 > xMin) {
@@ -164,7 +173,7 @@ SplashError SplashClip::clipToRect(SplashCoord x0, SplashCoord y0,
     }
     if (x0 < xMax) {
       xMax = x0;
-      xMaxI = splashFloor(xMax);
+      xMaxI = splashCeil(xMax) - 1;
     }
   }
   if (y0 < y1) {
@@ -174,7 +183,7 @@ SplashError SplashClip::clipToRect(SplashCoord x0, SplashCoord y0,
     }
     if (y1 < yMax) {
       yMax = y1;
-      yMaxI = splashFloor(yMax);
+      yMaxI = splashCeil(yMax) - 1;
     }
   } else {
     if (y1 > yMin) {
@@ -183,7 +192,7 @@ SplashError SplashClip::clipToRect(SplashCoord x0, SplashCoord y0,
     }
     if (y0 < yMax) {
       yMax = y0;
-      yMaxI = splashFloor(yMax);
+      yMaxI = splashCeil(yMax) - 1;
     }
   }
   return splashOk;
@@ -192,6 +201,7 @@ SplashError SplashClip::clipToRect(SplashCoord x0, SplashCoord y0,
 SplashError SplashClip::clipToPath(SplashPath *path, SplashCoord *matrix,
 				   SplashCoord flatness, GBool eo) {
   SplashXPath *xPath;
+  int yMinAA, yMaxAA;
 
   xPath = new SplashXPath(path, matrix, flatness, gTrue);
 
@@ -199,8 +209,8 @@ SplashError SplashClip::clipToPath(SplashPath *path, SplashCoord *matrix,
   if (xPath->length == 0) {
     xMax = xMin - 1;
     yMax = yMin - 1;
-    xMaxI = splashFloor(xMax);
-    yMaxI = splashFloor(yMax);
+    xMaxI = splashCeil(xMax) - 1;
+    yMaxI = splashCeil(yMax) - 1;
     delete xPath;
 
   // check for a rectangle
@@ -241,7 +251,14 @@ SplashError SplashClip::clipToPath(SplashPath *path, SplashCoord *matrix,
     xPath->sort();
     paths[length] = xPath;
     flags[length] = eo ? splashClipEO : 0;
-    scanners[length] = new SplashXPathScanner(xPath, eo);
+    if (antialias) {
+      yMinAA = yMinI * splashAASize;
+      yMaxAA = (yMaxI + 1) * splashAASize - 1;
+    } else {
+      yMinAA = yMinI;
+      yMaxAA = yMaxI;
+    }
+    scanners[length] = new SplashXPathScanner(xPath, eo, yMinAA, yMaxAA);
     ++length;
   }
 
@@ -280,10 +297,10 @@ SplashClipResult SplashClip::testRect(int rectXMin, int rectYMin,
   //     x = [rectXMin, rectXMax + 1)    (note: rect coords are ints)
   //     y = [rectYMin, rectYMax + 1)
   // against the clipping region:
-  //     x = [xMin, xMax]                (note: clipping coords are fp)
-  //     y = [yMin, yMax]
-  if ((SplashCoord)(rectXMax + 1) <= xMin || (SplashCoord)rectXMin > xMax ||
-      (SplashCoord)(rectYMax + 1) <= yMin || (SplashCoord)rectYMin > yMax) {
+  //     x = [xMin, xMax)                (note: clipping coords are fp)
+  //     y = [yMin, yMax)
+  if ((SplashCoord)(rectXMax + 1) <= xMin || (SplashCoord)rectXMin >= xMax ||
+      (SplashCoord)(rectYMax + 1) <= yMin || (SplashCoord)rectYMin >= yMax) {
     return splashClipAllOutside;
   }
   if ((SplashCoord)rectXMin >= xMin && (SplashCoord)(rectXMax + 1) <= xMax &&
@@ -301,10 +318,10 @@ SplashClipResult SplashClip::testSpan(int spanXMin, int spanXMax, int spanY) {
   //     x = [spanXMin, spanXMax + 1)    (note: span coords are ints)
   //     y = [spanY, spanY + 1)
   // against the clipping region:
-  //     x = [xMin, xMax]                (note: clipping coords are fp)
-  //     y = [yMin, yMax]
-  if ((SplashCoord)(spanXMax + 1) <= xMin || (SplashCoord)spanXMin > xMax ||
-      (SplashCoord)(spanY + 1) <= yMin || (SplashCoord)spanY > yMax) {
+  //     x = [xMin, xMax)                (note: clipping coords are fp)
+  //     y = [yMin, yMax)
+  if ((SplashCoord)(spanXMax + 1) <= xMin || (SplashCoord)spanXMin >= xMax ||
+      (SplashCoord)(spanY + 1) <= yMin || (SplashCoord)spanY >= yMax) {
     return splashClipAllOutside;
   }
   if (!((SplashCoord)spanXMin >= xMin && (SplashCoord)(spanXMax + 1) <= xMax &&

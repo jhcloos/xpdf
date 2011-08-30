@@ -70,6 +70,9 @@ public:
   // Set the soft mask bitmap.
   void setSoftMask(SplashBitmap *softMaskA);
 
+  // Set the transfer function.
+  void setTransfer(Guchar *red, Guchar *green, Guchar *blue, Guchar *gray);
+
 private:
 
   SplashState(SplashState *state);
@@ -94,6 +97,15 @@ private:
   SplashBitmap *softMask;
   GBool deleteSoftMask;
   GBool inNonIsolatedGroup;
+  Guchar rgbTransferR[256],
+         rgbTransferG[256],
+         rgbTransferB[256];
+  Guchar grayTransfer[256];
+  Guchar cmykTransferC[256],
+         cmykTransferM[256],
+         cmykTransferY[256],
+         cmykTransferK[256];
+  Guint overprintMask;
 
   SplashState *next;		// used by Splash class
 

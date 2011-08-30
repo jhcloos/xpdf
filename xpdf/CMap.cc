@@ -22,6 +22,8 @@
 #include "Error.h"
 #include "GlobalParams.h"
 #include "PSTokenizer.h"
+#include "Object.h"
+#include "Stream.h"
 #include "CMap.h"
 
 //------------------------------------------------------------------------
@@ -40,16 +42,39 @@ static int getCharFromFile(void *data) {
   return fgetc((FILE *)data);
 }
 
+static int getCharFromStream(void *data) {
+  return ((Stream *)data)->getChar();
+}
+
 //------------------------------------------------------------------------
+
+CMap *CMap::parse(CMapCache *cache, GString *collectionA, Object *obj) {
+  CMap *cMap;
+  GString *cMapNameA;
+
+  if (obj->isName()) {
+    cMapNameA = new GString(obj->getName());
+    if (!(cMap = globalParams->getCMap(collectionA, cMapNameA))) {
+      error(errSyntaxError, -1,
+	    "Unknown CMap '{0:t}' for character collection '{1:t}'",
+	    cMapNameA, collectionA);
+    }
+    delete cMapNameA;
+  } else if (obj->isStream()) {
+    if (!(cMap = CMap::parse(NULL, collectionA, obj->getStream()))) {
+      error(errSyntaxError, -1, "Invalid CMap in Type 0 font");
+    }
+  } else {
+    error(errSyntaxError, -1, "Invalid Encoding in Type 0 font");
+    return NULL;
+  }
+  return cMap;
+}
 
 CMap *CMap::parse(CMapCache *cache, GString *collectionA,
 		  GString *cMapNameA) {
   FILE *f;
-  CMap *cmap;
-  PSTokenizer *pst;
-  char tok1[256], tok2[256], tok3[256];
-  int n1, n2, n3;
-  Guint start, end, code;
+  CMap *cMap;
 
   if (!(f = globalParams->findCMapFile(collectionA, cMapNameA))) {
 
@@ -61,43 +86,53 @@ CMap *CMap::parse(CMapCache *cache, GString *collectionA,
       return new CMap(collectionA->copy(), cMapNameA->copy(), 1);
     }
 
-    error(-1, "Couldn't find '%s' CMap file for '%s' collection",
-	  cMapNameA->getCString(), collectionA->getCString());
+    error(errSyntaxError, -1,
+	  "Couldn't find '{0:t}' CMap file for '{1:t}' collection",
+	  cMapNameA, collectionA);
     return NULL;
   }
 
-  cmap = new CMap(collectionA->copy(), cMapNameA->copy());
+  cMap = new CMap(collectionA->copy(), cMapNameA->copy());
+  cMap->parse2(cache, &getCharFromFile, f);
 
-  pst = new PSTokenizer(&getCharFromFile, f);
+  fclose(f);
+
+  return cMap;
+}
+
+CMap *CMap::parse(CMapCache *cache, GString *collectionA, Stream *str) {
+  Object obj1;
+  CMap *cMap;
+
+  cMap = new CMap(collectionA->copy(), NULL);
+
+  if (!str->getDict()->lookup("UseCMap", &obj1)->isNull()) {
+    cMap->useCMap(cache, &obj1);
+  }
+  obj1.free();
+
+  str->reset();
+  cMap->parse2(cache, &getCharFromStream, str);
+  str->close();
+  return cMap;
+}
+
+void CMap::parse2(CMapCache *cache, int (*getCharFunc)(void *), void *data) {
+  PSTokenizer *pst;
+  char tok1[256], tok2[256], tok3[256];
+  int n1, n2, n3;
+  Guint start, end, code;
+
+  pst = new PSTokenizer(getCharFunc, data);
   pst->getToken(tok1, sizeof(tok1), &n1);
   while (pst->getToken(tok2, sizeof(tok2), &n2)) {
     if (!strcmp(tok2, "usecmap")) {
       if (tok1[0] == '/') {
-	cmap->useCMap(cache, tok1 + 1);
+	useCMap(cache, tok1 + 1);
       }
       pst->getToken(tok1, sizeof(tok1), &n1);
     } else if (!strcmp(tok1, "/WMode")) {
-      cmap->wMode = atoi(tok2);
-      pst->getToken(tok1, sizeof(tok1), &n1);
-    } else if (!strcmp(tok2, "begincodespacerange")) {
-      while (pst->getToken(tok1, sizeof(tok1), &n1)) {
-	if (!strcmp(tok1, "endcodespacerange")) {
-	  break;
-	}
-	if (!pst->getToken(tok2, sizeof(tok2), &n2) ||
-	    !strcmp(tok2, "endcodespacerange")) {
-	  error(-1, "Illegal entry in codespacerange block in CMap");
-	  break;
-	}
-	if (tok1[0] == '<' && tok2[0] == '<' &&
-	    n1 == n2 && n1 >= 4 && (n1 & 1) == 0) {
-	  tok1[n1 - 1] = tok2[n1 - 1] = '\0';
-	  sscanf(tok1 + 1, "%x", &start);
-	  sscanf(tok2 + 1, "%x", &end);
-	  n1 = (n1 - 2) / 2;
-	  cmap->addCodeSpace(cmap->vector, start, end, n1);
-	}
-      }
+      wMode = atoi(tok2);
       pst->getToken(tok1, sizeof(tok1), &n1);
     } else if (!strcmp(tok2, "begincidchar")) {
       while (pst->getToken(tok1, sizeof(tok1), &n1)) {
@@ -106,21 +141,21 @@ CMap *CMap::parse(CMapCache *cache, GString *collectionA,
 	}
 	if (!pst->getToken(tok2, sizeof(tok2), &n2) ||
 	    !strcmp(tok2, "endcidchar")) {
-	  error(-1, "Illegal entry in cidchar block in CMap");
+	  error(errSyntaxError, -1, "Illegal entry in cidchar block in CMap");
 	  break;
 	}
 	if (!(tok1[0] == '<' && tok1[n1 - 1] == '>' &&
 	      n1 >= 4 && (n1 & 1) == 0)) {
-	  error(-1, "Illegal entry in cidchar block in CMap");
+	  error(errSyntaxError, -1, "Illegal entry in cidchar block in CMap");
 	  continue;
 	}
 	tok1[n1 - 1] = '\0';
 	if (sscanf(tok1 + 1, "%x", &code) != 1) {
-	  error(-1, "Illegal entry in cidchar block in CMap");
+	  error(errSyntaxError, -1, "Illegal entry in cidchar block in CMap");
 	  continue;
 	}
 	n1 = (n1 - 2) / 2;
-	cmap->addCIDs(code, code, n1, (CID)atoi(tok2));
+	addCIDs(code, code, n1, (CID)atoi(tok2));
       }
       pst->getToken(tok1, sizeof(tok1), &n1);
     } else if (!strcmp(tok2, "begincidrange")) {
@@ -132,7 +167,7 @@ CMap *CMap::parse(CMapCache *cache, GString *collectionA,
 	    !strcmp(tok2, "endcidrange") ||
 	    !pst->getToken(tok3, sizeof(tok3), &n3) ||
 	    !strcmp(tok3, "endcidrange")) {
-	  error(-1, "Illegal entry in cidrange block in CMap");
+	  error(errSyntaxError, -1, "Illegal entry in cidrange block in CMap");
 	  break;
 	}
 	if (tok1[0] == '<' && tok2[0] == '<' &&
@@ -141,7 +176,7 @@ CMap *CMap::parse(CMapCache *cache, GString *collectionA,
 	  sscanf(tok1 + 1, "%x", &start);
 	  sscanf(tok2 + 1, "%x", &end);
 	  n1 = (n1 - 2) / 2;
-	  cmap->addCIDs(start, end, n1, (CID)atoi(tok3));
+	  addCIDs(start, end, n1, (CID)atoi(tok3));
 	}
       }
       pst->getToken(tok1, sizeof(tok1), &n1);
@@ -150,10 +185,6 @@ CMap *CMap::parse(CMapCache *cache, GString *collectionA,
     }
   }
   delete pst;
-
-  fclose(f);
-
-  return cmap;
 }
 
 CMap::CMap(GString *collectionA, GString *cMapNameA) {
@@ -161,6 +192,7 @@ CMap::CMap(GString *collectionA, GString *cMapNameA) {
 
   collection = collectionA;
   cMapName = cMapNameA;
+  isIdent = gFalse;
   wMode = 0;
   vector = (CMapVectorEntry *)gmallocn(256, sizeof(CMapVectorEntry));
   for (i = 0; i < 256; ++i) {
@@ -176,6 +208,7 @@ CMap::CMap(GString *collectionA, GString *cMapNameA) {
 CMap::CMap(GString *collectionA, GString *cMapNameA, int wModeA) {
   collection = collectionA;
   cMapName = cMapNameA;
+  isIdent = gTrue;
   wMode = wModeA;
   vector = NULL;
   refCnt = 1;
@@ -189,12 +222,37 @@ void CMap::useCMap(CMapCache *cache, char *useName) {
   CMap *subCMap;
 
   useNameStr = new GString(useName);
-  subCMap = cache->getCMap(collection, useNameStr);
+  // if cache is non-NULL, we already have a lock, and we can use
+  // CMapCache::getCMap() directly; otherwise, we need to use
+  // GlobalParams::getCMap() in order to acqure the lock need to use
+  // GlobalParams::getCMap
+  if (cache) {
+    subCMap = cache->getCMap(collection, useNameStr);
+  } else {
+    subCMap = globalParams->getCMap(collection, useNameStr);
+  }
   delete useNameStr;
   if (!subCMap) {
     return;
   }
-  copyVector(vector, subCMap->vector);
+  isIdent = subCMap->isIdent;
+  if (subCMap->vector) {
+    copyVector(vector, subCMap->vector);
+  }
+  subCMap->decRefCnt();
+}
+
+void CMap::useCMap(CMapCache *cache, Object *obj) {
+  CMap *subCMap;
+
+  subCMap = CMap::parse(cache, collection, obj);
+  if (!subCMap) {
+    return;
+  }
+  isIdent = subCMap->isIdent;
+  if (subCMap->vector) {
+    copyVector(vector, subCMap->vector);
+  }
   subCMap->decRefCnt();
 }
 
@@ -215,35 +273,10 @@ void CMap::copyVector(CMapVectorEntry *dest, CMapVectorEntry *src) {
       copyVector(dest[i].vector, src[i].vector);
     } else {
       if (dest[i].isVector) {
-	error(-1, "Collision in usecmap");
+	error(errSyntaxError, -1, "Collision in usecmap");
       } else {
 	dest[i].cid = src[i].cid;
       }
-    }
-  }
-}
-
-void CMap::addCodeSpace(CMapVectorEntry *vec, Guint start, Guint end,
-			Guint nBytes) {
-  Guint start2, end2;
-  int startByte, endByte, i, j;
-
-  if (nBytes > 1) {
-    startByte = (start >> (8 * (nBytes - 1))) & 0xff;
-    endByte = (end >> (8 * (nBytes - 1))) & 0xff;
-    start2 = start & ((1 << (8 * (nBytes - 1))) - 1);
-    end2 = end & ((1 << (8 * (nBytes - 1))) - 1);
-    for (i = startByte; i <= endByte; ++i) {
-      if (!vec[i].isVector) {
-	vec[i].isVector = gTrue;
-	vec[i].vector =
-	  (CMapVectorEntry *)gmallocn(256, sizeof(CMapVectorEntry));
-	for (j = 0; j < 256; ++j) {
-	  vec[i].vector[j].isVector = gFalse;
-	  vec[i].vector[j].cid = 0;
-	}
-      }
-      addCodeSpace(vec[i].vector, start2, end2, nBytes - 1);
     }
   }
 }
@@ -252,23 +285,28 @@ void CMap::addCIDs(Guint start, Guint end, Guint nBytes, CID firstCID) {
   CMapVectorEntry *vec;
   CID cid;
   int byte;
-  Guint i;
+  Guint i, j;
 
   vec = vector;
   for (i = nBytes - 1; i >= 1; --i) {
     byte = (start >> (8 * i)) & 0xff;
     if (!vec[byte].isVector) {
-      error(-1, "Invalid CID (%0*x - %0*x) in CMap",
-	    2*nBytes, start, 2*nBytes, end);
-      return;
+      vec[byte].isVector = gTrue;
+      vec[byte].vector =
+	  (CMapVectorEntry *)gmallocn(256, sizeof(CMapVectorEntry));
+      for (j = 0; j < 256; ++j) {
+	vec[byte].vector[j].isVector = gFalse;
+	vec[byte].vector[j].cid = 0;
+      }
     }
     vec = vec[byte].vector;
   }
   cid = firstCID;
   for (byte = (int)(start & 0xff); byte <= (int)(end & 0xff); ++byte) {
     if (vec[byte].isVector) {
-      error(-1, "Invalid CID (%0*x - %0*x) in CMap",
-	    2*nBytes, start, 2*nBytes, end);
+      error(errSyntaxError, -1,
+	    "Invalid CID ({0:x} - {1:x} [{2:d} bytes]) in CMap",
+	    start, end, nBytes);
     } else {
       vec[byte].cid = cid;
     }
@@ -278,7 +316,9 @@ void CMap::addCIDs(Guint start, Guint end, Guint nBytes, CID firstCID) {
 
 CMap::~CMap() {
   delete collection;
-  delete cMapName;
+  if (cMapName) {
+    delete cMapName;
+  }
   if (vector) {
     freeCMapVector(vector);
   }
@@ -327,31 +367,33 @@ GBool CMap::match(GString *collectionA, GString *cMapNameA) {
   return !collection->cmp(collectionA) && !cMapName->cmp(cMapNameA);
 }
 
-CID CMap::getCID(char *s, int len, int *nUsed) {
+CID CMap::getCID(char *s, int len, CharCode *c, int *nUsed) {
   CMapVectorEntry *vec;
+  CharCode cc;
   int n, i;
 
-  if (!(vec = vector)) {
-    // identity CMap
-    *nUsed = 2;
-    if (len < 2) {
-      return 0;
-    }
-    return ((s[0] & 0xff) << 8) + (s[1] & 0xff);
-  }
+  vec = vector;
+  cc = 0;
   n = 0;
-  while (1) {
-    if (n >= len) {
-      *nUsed = n;
-      return 0;
-    }
+  while (vec && n < len) {
     i = s[n++] & 0xff;
+    cc = (cc << 8) | i;
     if (!vec[i].isVector) {
+      *c = cc;
       *nUsed = n;
       return vec[i].cid;
     }
     vec = vec[i].vector;
   }
+  if (isIdent && len >= 2) {
+    // identity CMap
+    *nUsed = 2;
+    *c = cc = ((s[0] & 0xff) << 8) + (s[1] & 0xff);
+    return cc;
+  }
+  *nUsed = 1;
+  *c = s[0] & 0xff;
+  return 0;
 }
 
 //------------------------------------------------------------------------

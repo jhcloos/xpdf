@@ -1,8 +1,8 @@
-.\" Copyright 1999-2007 Glyph & Cog, LLC
-.TH pdfinfo 1 "27 February 2007"
+.\" Copyright 1999-2011 Glyph & Cog, LLC
+.TH pdfinfo 1 "15 August 2011"
 .SH NAME
 pdfinfo \- Portable Document Format (PDF) document information
-extractor (version 3.02)
+extractor (version 3.03)
 .SH SYNOPSIS
 .B pdfinfo
 [options]
@@ -45,6 +45,9 @@ In addition, the following information is printed:
 tagged (yes/no)
 .RE
 .RS
+form (AcroForm / XFA / none)
+.RE
+.RS
 page count
 .RE
 .RS
@@ -82,9 +85,9 @@ the corresponding command line option.
 .TP
 .BI \-f " number"
 Specifies the first page to examine.  If multiple pages are requested
-using the "-f" and "-l" options, the size of each requested page (and,
-optionally, the bounding boxes for each requested page) are printed.
-Otherwise, only page one is examined.
+using the "\-f" and "\-l" options, the size of each requested page
+(and, optionally, the bounding boxes for each requested page) are
+printed.  Otherwise, only page one is examined.
 .TP
 .BI \-l " number"
 Specifies the last page to examine.
@@ -96,6 +99,9 @@ TrimBox, and ArtBox.
 .B \-meta
 Prints document-level metadata.  (This is the "Metadata" stream from
 the PDF file's Catalog object.)
+.TP
+.B \-rawdates
+Prints the raw (undecoded) date strings, directly from the PDF file.
 .TP
 .BI \-enc " encoding-name"
 Sets the encoding to use for text output.  The
@@ -144,13 +150,14 @@ Error related to PDF permissions.
 99
 Other error.
 .SH AUTHOR
-The pdfinfo software and documentation are copyright 1996-2007 Glyph &
+The pdfinfo software and documentation are copyright 1996-2011 Glyph &
 Cog, LLC.
 .SH "SEE ALSO"
 .BR xpdf (1),
 .BR pdftops (1),
 .BR pdftotext (1),
 .BR pdffonts (1),
+.BR pdfdetach (1),
 .BR pdftoppm (1),
 .BR pdfimages (1),
 .BR xpdfrc (5)

@@ -1,8 +1,8 @@
-.\" Copyright 1996-2007 Glyph & Cog, LLC
-.TH pdftops 1 "27 February 2007"
+.\" Copyright 1996-2011 Glyph & Cog, LLC
+.TH pdftops 1 "15 August 2011"
 .SH NAME
 pdftops \- Portable Document Format (PDF) to PostScript converter
-(version 3.02)
+(version 3.03)
 .SH SYNOPSIS
 .B pdftops
 [options]
@@ -25,7 +25,7 @@ to
 .I file.ps
 (or
 .I file.eps
-with the -eps option).  If 
+with the \-eps option).  If 
 .I PS-file
 is \'-', the PostScript is sent to stdout.
 .SH CONFIGURATION FILE
@@ -50,8 +50,8 @@ Specifies the last page to print.
 Generate Level 1 PostScript.  The resulting PostScript files will be
 significantly larger (if they contain images), but will print on Level
 1 printers.  This also converts all images to black and white.  No
-more than one of the PostScript level options (-level1, -level1sep,
--level2, -level2sep, -level3, -level3Sep) may be given.
+more than one of the PostScript level options (\-level1, \-level1sep,
+\-level2, \-level2sep, \-level3, \-level3Sep) may be given.
 .RB "[config file: " psLevel ]
 .TP
 .B \-level1sep
@@ -78,20 +78,20 @@ CID font embedding and masked image generation.
 .TP
 .B \-level3Sep
 Generate Level 3 separable PostScript.  The separation handling is the
-same as for -level2Sep.
+same as for \-level2Sep.
 .RB "[config file: " psLevel ]
 .TP
 .B \-eps
 Generate an Encapsulated PostScript (EPS) file.  An EPS file contains
 a single image, so if you use this option with a multi-page PDF file,
-you must use -f and -l to specify a single page.  No more than one of
-the mode options (-eps, -form) may be given.
+you must use \-f and \-l to specify a single page.  No more than one of
+the mode options (\-eps, \-form) may be given.
 .TP
 .B \-form
 Generate a PostScript form which can be imported by software that
 understands forms.  A form contains a single page, so if you use this
-option with a multi-page PDF file, you must use -f and -l to specify a
-single page.  The -level1 option cannot be used with -form.
+option with a multi-page PDF file, you must use \-f and \-l to specify a
+single page.  The \-level1 option cannot be used with \-form.
 .TP
 .B \-opi
 Generate OPI comments for all images and forms which have OPI
@@ -221,13 +221,14 @@ Error related to PDF permissions.
 99
 Other error.
 .SH AUTHOR
-The pdftops software and documentation are copyright 1996-2007 Glyph &
+The pdftops software and documentation are copyright 1996-2011 Glyph &
 Cog, LLC.
 .SH "SEE ALSO"
 .BR xpdf (1),
 .BR pdftotext (1),
 .BR pdfinfo (1),
 .BR pdffonts (1),
+.BR pdfdetach (1),
 .BR pdftoppm (1),
 .BR pdfimages (1),
 .BR xpdfrc (5)

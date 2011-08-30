@@ -3,7 +3,7 @@ dnl Copyright 1998-2005 Glyph & Cog, LLC
 
 AC_PREREQ(2.57)
 
-AC_INIT(xpdf/xpdf.cc)
+AC_INIT(xpdf/Gfx.cc)
 AC_CONFIG_HEADER(aconf.h)
 
 dnl ##### Optional features.
@@ -237,6 +237,21 @@ if test "$xpdf_cv_func_select_arg" != yes; then
   AC_DEFINE(SELECT_TAKES_INT)
 fi
 
+dnl ##### Check for std::sort.
+AC_CACHE_CHECK([for std::sort],
+xpdf_cv_func_std_sort,
+[AC_COMPILE_IFELSE(
+  AC_LANG_PROGRAM([[#include <algorithm>
+struct functor {
+  bool operator()(const int &i0, const int &i1) { return i0 < i1; }
+};]],
+                  [[int a[[100]];
+std::sort(a, a+100, functor());]]),
+xpdf_cv_func_std_sort=yes, xpdf_cv_func_std_sort=no)])
+if test "$xpdf_cv_func_std_sort" = yes; then
+  AC_DEFINE(HAVE_STD_SORT)
+fi
+
 dnl ##### Back to C for the library tests.
 AC_LANG_C
 
@@ -299,10 +314,15 @@ if test -z "$no_x"; then
   fi
 fi
 
-dnl ##### Check for t1lib.
-smr_CHECK_LIB(t1, t1, [Type 1 font rasterizer], 
-              T1_InitLib, t1lib.h,
-              -lm, $X_CFLAGS)
+#dnl ##### Check for t1lib.
+#smr_CHECK_LIB(t1, t1, [Type 1 font rasterizer], 
+#              T1_InitLib, t1lib.h,
+#              -lm, $X_CFLAGS)
+# t1lib has some potential security holes, and hasn't been updated in
+# years -- if you really want to use it, uncomment the preceding lines,
+# and comment out the next two lines
+t1_LIBS=""
+t1_CFLAGS=""
 AC_SUBST(t1_LIBS)
 AC_SUBST(t1_CFLAGS)
 
@@ -349,5 +369,6 @@ if test -n "$no_x" -o "x$smr_have_Xm_library" != xyes -o "x$smr_have_freetype2_l
     AC_MSG_WARN([Couldn't find FreeType]);
   fi
   AC_MSG_WARN([-- You will be able to compile pdftops, pdftotext,
-        pdfinfo, pdffonts, and pdfimages, but not xpdf or pdftoppm])
+        pdfinfo, pdffonts, pdfdetach, and pdfimages, but not xpdf
+        or pdftoppm])
 fi

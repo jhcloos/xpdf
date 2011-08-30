@@ -156,7 +156,6 @@ XPDFApp::XPDFApp(int *argc, char *argv[]) {
   getResources();
 
   viewers = new GList();
-
 }
 
 void XPDFApp::getResources() {
@@ -188,7 +187,8 @@ void XPDFApp::getResources() {
       paperRGB[2] = xcol.blue >> 8;
       paperPixel = xcol.pixel;
     } else {
-      error(-1, "Couldn't allocate color '%s'", resources.paperColor);
+      error(errIO, -1, "Couldn't allocate color '{0:s}'",
+	    resources.paperColor);
     }
   }
   if (XAllocNamedColor(display, colormap, resources.matteColor,

@@ -11,6 +11,7 @@
 #endif
 
 #include <stdio.h>
+#include <limits.h>
 #include "gmem.h"
 #include "SplashErrorCodes.h"
 #include "SplashBitmap.h"
@@ -27,53 +28,79 @@ SplashBitmap::SplashBitmap(int widthA, int heightA, int rowPad,
   mode = modeA;
   switch (mode) {
   case splashModeMono1:
-    rowSize = (width + 7) >> 3;
+    if (width > 0) {
+      rowSize = (width + 7) >> 3;
+    } else {
+      rowSize = -1;
+    }
     break;
   case splashModeMono8:
-    rowSize = width;
+    if (width > 0) {
+      rowSize = width;
+    } else {
+      rowSize = -1;
+    }
     break;
   case splashModeRGB8:
   case splashModeBGR8:
-    rowSize = width * 3;
+    if (width > 0 && width <= INT_MAX / 3) {
+      rowSize = width * 3;
+    } else {
+      rowSize = -1;
+    }
     break;
 #if SPLASH_CMYK
   case splashModeCMYK8:
-    rowSize = width * 4;
+    if (width > 0 && width <= INT_MAX / 4) {
+      rowSize = width * 4;
+    } else {
+      rowSize = -1;
+    }
     break;
 #endif
   }
-  rowSize += rowPad - 1;
-  rowSize -= rowSize % rowPad;
-  data = (SplashColorPtr)gmalloc(rowSize * height);
+  if (rowSize > 0) {
+    rowSize += rowPad - 1;
+    rowSize -= rowSize % rowPad;
+  }
+  data = (SplashColorPtr)gmallocn(height, rowSize);
   if (!topDown) {
     data += (height - 1) * rowSize;
     rowSize = -rowSize;
   }
   if (alphaA) {
-    alpha = (Guchar *)gmalloc(width * height);
+    alpha = (Guchar *)gmallocn(width, height);
   } else {
     alpha = NULL;
   }
 }
 
-
 SplashBitmap::~SplashBitmap() {
-  if (rowSize < 0) {
-    gfree(data + (height - 1) * rowSize);
-  } else {
-    gfree(data);
+  if (data) {
+    if (rowSize < 0) {
+      gfree(data + (height - 1) * rowSize);
+    } else {
+      gfree(data);
+    }
   }
   gfree(alpha);
 }
 
 SplashError SplashBitmap::writePNMFile(char *fileName) {
   FILE *f;
-  SplashColorPtr row, p;
-  int x, y;
+  SplashError err;
 
   if (!(f = fopen(fileName, "wb"))) {
     return splashErrOpenFile;
   }
+  err = writePNMFile(f);
+  fclose(f);
+  return err;
+}
+
+SplashError SplashBitmap::writePNMFile(FILE *f) {
+  SplashColorPtr row, p;
+  int x, y;
 
   switch (mode) {
 
@@ -94,11 +121,7 @@ SplashError SplashBitmap::writePNMFile(char *fileName) {
     fprintf(f, "P5\n%d %d\n255\n", width, height);
     row = data;
     for (y = 0; y < height; ++y) {
-      p = row;
-      for (x = 0; x < width; ++x) {
-	fputc(*p, f);
-	++p;
-      }
+      fwrite(row, 1, width, f);
       row += rowSize;
     }
     break;
@@ -107,13 +130,7 @@ SplashError SplashBitmap::writePNMFile(char *fileName) {
     fprintf(f, "P6\n%d %d\n255\n", width, height);
     row = data;
     for (y = 0; y < height; ++y) {
-      p = row;
-      for (x = 0; x < width; ++x) {
-	fputc(splashRGB8R(p), f);
-	fputc(splashRGB8G(p), f);
-	fputc(splashRGB8B(p), f);
-	p += 3;
-      }
+      fwrite(row, 1, 3 * width, f);
       row += rowSize;
     }
     break;
@@ -138,11 +155,27 @@ SplashError SplashBitmap::writePNMFile(char *fileName) {
     // PNM doesn't support CMYK
     break;
 #endif
+
   }
 
+  return splashOk;
+}
+
+SplashError SplashBitmap::writeAlphaPGMFile(char *fileName) {
+  FILE *f;
+
+  if (!alpha) {
+    return splashErrModeMismatch;
+  }
+  if (!(f = fopen(fileName, "wb"))) {
+    return splashErrOpenFile;
+  }
+  fprintf(f, "P5\n%d %d\n255\n", width, height);
+  fwrite(alpha, 1, width * height, f);
   fclose(f);
   return splashOk;
 }
+
 
 void SplashBitmap::getPixel(int x, int y, SplashColorPtr pixel) {
   SplashColorPtr p;
@@ -185,4 +218,12 @@ void SplashBitmap::getPixel(int x, int y, SplashColorPtr pixel) {
 
 Guchar SplashBitmap::getAlpha(int x, int y) {
   return alpha[y * width + x];
+}
+
+SplashColorPtr SplashBitmap::takeData() {
+  SplashColorPtr data2;
+
+  data2 = data;
+  data = NULL;
+  return data2;
 }

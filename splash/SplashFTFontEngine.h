@@ -29,30 +29,32 @@ class SplashFontFileID;
 class SplashFTFontEngine {
 public:
 
-  static SplashFTFontEngine *init(GBool aaA);
+  static SplashFTFontEngine *init(GBool aaA, Guint flagsA);
 
   ~SplashFTFontEngine();
 
   // Load fonts.
   SplashFontFile *loadType1Font(SplashFontFileID *idA, char *fileName,
-				GBool deleteFile, char **enc);
+				GBool deleteFile, const char **enc);
   SplashFontFile *loadType1CFont(SplashFontFileID *idA, char *fileName,
-				 GBool deleteFile, char **enc);
+				 GBool deleteFile, const char **enc);
   SplashFontFile *loadOpenTypeT1CFont(SplashFontFileID *idA, char *fileName,
-				      GBool deleteFile, char **enc);
+				      GBool deleteFile, const char **enc);
   SplashFontFile *loadCIDFont(SplashFontFileID *idA, char *fileName,
 			      GBool deleteFile);
   SplashFontFile *loadOpenTypeCFFFont(SplashFontFileID *idA, char *fileName,
-				      GBool deleteFile);
+				      GBool deleteFile,
+				      int *codeToGID, int codeToGIDLen);
   SplashFontFile *loadTrueTypeFont(SplashFontFileID *idA, char *fileName,
-				   GBool deleteFile,
-				   Gushort *codeToGID, int codeToGIDLen);
+				   int fontNum, GBool deleteFile,
+				   int *codeToGID, int codeToGIDLen);
 
 private:
 
-  SplashFTFontEngine(GBool aaA, FT_Library libA);
+  SplashFTFontEngine(GBool aaA, Guint flagsA, FT_Library libA);
 
   GBool aa;
+  Guint flags;
   FT_Library lib;
   GBool useCIDs;
 
