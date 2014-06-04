@@ -35,11 +35,6 @@
 #define USE_EXCEPTIONS 1
 
 /*
- * Enable word list support.
- */
-#undef TEXTOUT_WORD_LIST
-
-/*
  * Use fixed point (instead of floating point) arithmetic.
  */
 #undef USE_FIXEDPOINT
@@ -72,6 +67,7 @@
 #define HAVE_STD_SORT 1
 #undef HAVE_FSEEKO
 #undef HAVE_FSEEK64
+#define HAVE_FSEEKI64 1
 #undef _FILE_OFFSET_BITS
 #undef _LARGE_FILES
 #undef _LARGEFILE_SOURCE
@@ -81,11 +77,6 @@
  * This is defined if using libXpm.
  */
 #undef HAVE_X11_XPM_H
-
-/*
- * This is defined if using t1lib.
- */
-#undef HAVE_T1LIB_H
 
 /*
  * One of these is defined if using FreeType (version 1 or 2).
@@ -111,11 +102,11 @@
 /*
  * Defined if the Splash library is avaiable.
  */
-#undef HAVE_SPLASH
+#define HAVE_SPLASH 1
 
 /*
  * Enable support for CMYK output.
  */
-#undef SPLASH_CMYK
+#define SPLASH_CMYK 1
 
 #endif

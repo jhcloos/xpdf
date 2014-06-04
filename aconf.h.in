@@ -35,11 +35,6 @@
 #undef USE_EXCEPTIONS
 
 /*
- * Enable word list support.
- */
-#undef TEXTOUT_WORD_LIST
-
-/*
  * Use fixed point (instead of floating point) arithmetic.
  */
 #undef USE_FIXEDPOINT
@@ -72,6 +67,7 @@
 #undef HAVE_STD_SORT
 #undef HAVE_FSEEKO
 #undef HAVE_FSEEK64
+#undef HAVE_FSEEKI64
 #undef _FILE_OFFSET_BITS
 #undef _LARGE_FILES
 #undef _LARGEFILE_SOURCE
@@ -81,11 +77,6 @@
  * This is defined if using libXpm.
  */
 #undef HAVE_X11_XPM_H
-
-/*
- * This is defined if using t1lib.
- */
-#undef HAVE_T1LIB_H
 
 /*
  * One of these is defined if using FreeType 2.

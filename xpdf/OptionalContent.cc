@@ -2,7 +2,7 @@
 //
 // OptionalContent.cc
 //
-// Copyright 2008 Glyph & Cog, LLC
+// Copyright 2008-2013 Glyph & Cog, LLC
 //
 //========================================================================
 
@@ -17,7 +17,7 @@
 #include "Error.h"
 #include "Object.h"
 #include "PDFDoc.h"
-#include "PDFDocEncoding.h"
+#include "TextString.h"
 #include "OptionalContent.h"
 
 //------------------------------------------------------------------------
@@ -150,70 +150,79 @@ GBool OptionalContent::evalOCObject(Object *obj, GBool *visible) {
     }
   }
   obj->fetch(xref, &obj2);
-  if (obj2.isDict("OCMD")) {
-    if (obj2.dictLookup("VE", &obj3)->isArray()) {
-      *visible = evalOCVisibilityExpr(&obj3, 0);
-      obj3.free();
+  if (!obj2.isDict("OCMD")) {
+    obj2.free();
+    return gFalse;
+  }
+  if (obj2.dictLookup("VE", &obj3)->isArray()) {
+    *visible = evalOCVisibilityExpr(&obj3, 0);
+    obj3.free();
+  } else {
+    obj3.free();
+    policy = ocPolicyAnyOn;
+    if (obj2.dictLookup("P", &obj3)->isName()) {
+      if (obj3.isName("AllOn")) {
+	policy = ocPolicyAllOn;
+      } else if (obj3.isName("AnyOn")) {
+	policy = ocPolicyAnyOn;
+      } else if (obj3.isName("AnyOff")) {
+	policy = ocPolicyAnyOff;
+      } else if (obj3.isName("AllOff")) {
+	policy = ocPolicyAllOff;
+      }
+    }
+    obj3.free();
+    obj2.dictLookupNF("OCGs", &obj3);
+    ocg = NULL;
+    if (obj3.isRef()) {
+      ref = obj3.getRef();
+      ocg = findOCG(&ref);
+    }
+    if (ocg) {
+      *visible = (policy == ocPolicyAllOn || policy == ocPolicyAnyOn) ?
+	           ocg->getState() : !ocg->getState();
     } else {
-      obj3.free();
-      policy = ocPolicyAnyOn;
-      if (obj2.dictLookup("P", &obj3)->isName()) {
-	if (obj3.isName("AllOn")) {
-	  policy = ocPolicyAllOn;
-	} else if (obj3.isName("AnyOn")) {
-	  policy = ocPolicyAnyOn;
-	} else if (obj3.isName("AnyOff")) {
-	  policy = ocPolicyAnyOff;
-	} else if (obj3.isName("AllOff")) {
-	  policy = ocPolicyAllOff;
-	}
+      *visible = policy == ocPolicyAllOn || policy == ocPolicyAllOff;
+      if (!obj3.fetch(xref, &obj4)->isArray()) {
+	obj4.free();
+	obj3.free();
+	obj2.free();
+	return gFalse;
       }
-      obj3.free();
-      obj2.dictLookupNF("OCGs", &obj3);
-      ocg = NULL;
-      if (obj3.isRef()) {
-	ref = obj3.getRef();
-	ocg = findOCG(&ref);
-      }
-      if (ocg) {
-	*visible = (policy == ocPolicyAllOn || policy == ocPolicyAnyOn) ?
-	             ocg->getState() : !ocg->getState();
-      } else {
-	*visible = gTrue;
-	if (obj3.fetch(xref, &obj4)->isArray()) {
-	  for (i = 0; i < obj4.arrayGetLength(); ++i) {
-	    obj4.arrayGetNF(i, &obj5);
-	    if (obj5.isRef()) {
-	      ref = obj5.getRef();
-	      if ((ocg = findOCG(&ref))) {
-		switch (policy) {
-		case ocPolicyAllOn:
-		  *visible = *visible && ocg->getState();
-		  break;
-		case ocPolicyAnyOn:
-		  *visible = *visible || ocg->getState();
-		  break;
-		case ocPolicyAnyOff:
-		  *visible = *visible || !ocg->getState();
-		  break;
-		case ocPolicyAllOff:
-		  *visible = *visible && !ocg->getState();
-		  break;
-		}
-	      }
-	    }
+      for (i = 0; i < obj4.arrayGetLength(); ++i) {
+	obj4.arrayGetNF(i, &obj5);
+	if (obj5.isRef()) {
+	  ref = obj5.getRef();
+	  if (!(ocg = findOCG(&ref))) {
 	    obj5.free();
+	    obj4.free();
+	    obj3.free();
+	    obj2.free();
+	    return gFalse;
+	  }
+	  switch (policy) {
+	  case ocPolicyAllOn:
+	    *visible = *visible && ocg->getState();
+	    break;
+	  case ocPolicyAnyOn:
+	    *visible = *visible || ocg->getState();
+	    break;
+	  case ocPolicyAnyOff:
+	    *visible = *visible || !ocg->getState();
+	    break;
+	  case ocPolicyAllOff:
+	    *visible = *visible && !ocg->getState();
+	    break;
 	  }
 	}
-	obj4.free();
+	obj5.free();
       }
-      obj3.free();
+      obj4.free();
     }
-    obj2.free();
-    return gTrue;
+    obj3.free();
   }
   obj2.free();
-  return gFalse;
+  return gTrue;
 }
 
 GBool OptionalContent::evalOCVisibilityExpr(Object *expr, int recursion) {
@@ -279,12 +288,9 @@ GBool OptionalContent::evalOCVisibilityExpr(Object *expr, int recursion) {
 //------------------------------------------------------------------------
 
 OptionalContentGroup *OptionalContentGroup::parse(Ref *refA, Object *obj) {
-  Unicode *nameA;
-  int nameLenA;
+  TextString *nameA;
   Object obj1, obj2, obj3;
-  GString *s;
   OCUsageState viewStateA, printStateA;
-  int i;
 
   if (!obj->isDict()) {
     return NULL;
@@ -294,22 +300,7 @@ OptionalContentGroup *OptionalContentGroup::parse(Ref *refA, Object *obj) {
     obj1.free();
     return NULL;
   }
-  s = obj1.getString();
-  if ((s->getChar(0) & 0xff) == 0xfe &&
-      (s->getChar(1) & 0xff) == 0xff) {
-    nameLenA = (s->getLength() - 2) / 2;
-    nameA = (Unicode *)gmallocn(nameLenA, sizeof(Unicode));
-    for (i = 0; i < nameLenA; ++i) {
-      nameA[i] = ((s->getChar(2 + 2*i) & 0xff) << 8) |
-	         (s->getChar(3 + 2*i) & 0xff);
-    }
-  } else {
-    nameLenA = s->getLength();
-    nameA = (Unicode *)gmallocn(nameLenA, sizeof(Unicode));
-    for (i = 0; i < nameLenA; ++i) {
-      nameA[i] = pdfDocEncoding[s->getChar(i) & 0xff];
-    }
-  }
+  nameA = new TextString(obj1.getString());
   obj1.free();
 
   viewStateA = printStateA = ocUsageUnset;
@@ -339,28 +330,33 @@ OptionalContentGroup *OptionalContentGroup::parse(Ref *refA, Object *obj) {
   }
   obj1.free();
 
-  return new OptionalContentGroup(refA, nameA, nameLenA,
-				  viewStateA, printStateA);
+  return new OptionalContentGroup(refA, nameA, viewStateA, printStateA);
 }
 
-OptionalContentGroup::OptionalContentGroup(Ref *refA, Unicode *nameA,
-					   int nameLenA,
+OptionalContentGroup::OptionalContentGroup(Ref *refA, TextString *nameA,
 					   OCUsageState viewStateA,
 					   OCUsageState printStateA) {
   ref = *refA;
   name = nameA;
-  nameLen = nameLenA;
   viewState = viewStateA;
   printState = printStateA;
   state = gTrue;
 }
 
 OptionalContentGroup::~OptionalContentGroup() {
-  gfree(name);
+  delete name;
 }
 
 GBool OptionalContentGroup::matches(Ref *refA) {
   return refA->num == ref.num && refA->gen == ref.gen;
+}
+
+Unicode *OptionalContentGroup::getName() {
+  return name->getUnicode();
+}
+
+int OptionalContentGroup::getNameLength() {
+  return name->getLength();
 }
 
 //------------------------------------------------------------------------
@@ -404,8 +400,10 @@ OCDisplayNode *OCDisplayNode::parse(Object *obj, OptionalContent *oc,
     obj2.arrayGetNF(i, &obj3);
     if ((child = OCDisplayNode::parse(&obj3, oc, xref, recursion + 1))) {
       if (!child->ocg && !child->name && node->getNumChildren() > 0) {
-	node->getChild(node->getNumChildren() - 1)->
-	          addChildren(child->takeChildren());
+	if (child->getNumChildren() > 0) {
+	  node->getChild(node->getNumChildren() - 1)->
+	            addChildren(child->takeChildren());
+	}
 	delete child;
       } else {
 	node->addChild(child);
@@ -418,42 +416,19 @@ OCDisplayNode *OCDisplayNode::parse(Object *obj, OptionalContent *oc,
 }
 
 OCDisplayNode::OCDisplayNode() {
-  name = NULL;
-  nameLen = 0;
+  name = new TextString();
   ocg = NULL;
   children = NULL;
 }
 
 OCDisplayNode::OCDisplayNode(GString *nameA) {
-  int i;
-
-  if ((nameA->getChar(0) & 0xff) == 0xfe &&
-      (nameA->getChar(1) & 0xff) == 0xff) {
-    nameLen = (nameA->getLength() - 2) / 2;
-    name = (Unicode *)gmallocn(nameLen, sizeof(Unicode));
-    for (i = 0; i < nameLen; ++i) {
-      name[i] = ((nameA->getChar(2 + 2*i) & 0xff) << 8) |
-	        (nameA->getChar(3 + 2*i) & 0xff);
-    }
-  } else {
-    nameLen = nameA->getLength();
-    name = (Unicode *)gmallocn(nameLen, sizeof(Unicode));
-    for (i = 0; i < nameLen; ++i) {
-      name[i] = pdfDocEncoding[nameA->getChar(i) & 0xff];
-    }
-  }
+  name = new TextString(nameA);
   ocg = NULL;
   children = NULL;
 }
 
 OCDisplayNode::OCDisplayNode(OptionalContentGroup *ocgA) {
-  nameLen = ocgA->getNameLength();
-  if (nameLen) {
-    name = (Unicode *)gmallocn(nameLen, sizeof(Unicode));
-    memcpy(name, ocgA->getName(), nameLen * sizeof(Unicode));
-  } else {
-    name = NULL;
-  }
+  name = new TextString(ocgA->name);
   ocg = ocgA;
   children = NULL;
 }
@@ -482,10 +457,18 @@ GList *OCDisplayNode::takeChildren() {
 }
 
 OCDisplayNode::~OCDisplayNode() {
-  gfree(name);
+  delete name;
   if (children) {
     deleteGList(children, OCDisplayNode);
   }
+}
+
+Unicode *OCDisplayNode::getName() {
+  return name->getUnicode();
+}
+
+int OCDisplayNode::getNameLength() {
+  return name->getLength();
 }
 
 int OCDisplayNode::getNumChildren() {

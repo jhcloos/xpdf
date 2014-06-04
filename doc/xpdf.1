@@ -1,7 +1,7 @@
-.\" Copyright 1996-2011 Glyph & Cog, LLC
-.TH xpdf 1 "15 August 2011"
+.\" Copyright 1996-2014 Glyph & Cog, LLC
+.TH xpdf 1 "28 May 2014"
 .SH NAME
-xpdf \- Portable Document Format (PDF) file viewer for X (version 3.03)
+xpdf \- Portable Document Format (PDF) file viewer for X (version 3.04)
 .SH SYNOPSIS
 .B xpdf
 [options]
@@ -101,11 +101,6 @@ width.
 Start in continuous view mode, i.e., with one vertical scroll bar for
 the whole document.
 .RB "[config file: " continuousView ]
-.TP
-.BI \-t1lib " yes | no"
-Enable or disable t1lib (a Type 1 font rasterizer).  This defaults to
-"yes".
-.RB "[config file: " enableT1lib ]
 .TP
 .BI \-freetype " yes | no"
 Enable or disable FreeType (a TrueType / Type 1 font rasterizer).
@@ -638,7 +633,11 @@ Redraw the window.
 Raise the window to the front.
 .TP
 .B closeWindow
-Close the window.
+Close the window.  If this was the last open window, clear the window,
+but don't quit from Xpdf.
+.TP
+.B closeWindowOrQuit
+Close the window.  If this was the last open window, quit from Xpdf.
 .TP
 .BI run( external-command-string )
 Run an external command.  The following escapes are allowed in the
@@ -666,6 +665,13 @@ command string:
     %j => x coordinate of the mouse pointer
     %k => y coordinate of the mouse pointer
     %% => %
+
+.fi
+The external command string will often contain spaces, so the whole
+command must be quoted in the xpdfrc file:
+.nf
+
+    bind x "run(ls -l)"
 
 .fi
 .TP
@@ -799,7 +805,7 @@ The default key bindings are as follows:
     bind w              any         zoomFitWidth
     bind alt-f          any         toggleFullScreenMode
     bind ctrl-l         any         redraw
-    bind ctrl-w         any         closeWindow
+    bind ctrl-w         any         closeWindowOrQuit
     bind ?              any         about
     bind q              any         quit
     bind Q              any         quit
@@ -863,15 +869,17 @@ Error related to PDF permissions.
 99
 Other error.
 .SH AUTHOR
-The xpdf software and documentation are copyright 1996-2011 Glyph &
+The xpdf software and documentation are copyright 1996-2014 Glyph &
 Cog, LLC.
 .SH "SEE ALSO"
 .BR pdftops (1),
 .BR pdftotext (1),
+.BR pdftohtml (1),
 .BR pdfinfo (1),
 .BR pdffonts (1),
 .BR pdfdetach (1),
 .BR pdftoppm (1),
+.BR pdftopng (1),
 .BR pdfimages (1),
 .BR xpdfrc (5)
 .br

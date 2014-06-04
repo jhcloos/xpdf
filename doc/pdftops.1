@@ -1,8 +1,8 @@
-.\" Copyright 1996-2011 Glyph & Cog, LLC
-.TH pdftops 1 "15 August 2011"
+.\" Copyright 1996-2014 Glyph & Cog, LLC
+.TH pdftops 1 "28 May 2014"
 .SH NAME
 pdftops \- Portable Document Format (PDF) to PostScript converter
-(version 3.03)
+(version 3.04)
 .SH SYNOPSIS
 .B pdftops
 [options]
@@ -172,6 +172,7 @@ lower-left corner of the paper instead.
 .B \-pagecrop
 Treat the CropBox as the PDF page size.  By default, the MediaBox is
 used as the page size.
+.RB "[config file: " psUseCropBoxAsPage ]
 .TP
 .B \-duplex
 Set the Duplex pagedevice entry in the PostScript file.  This tells
@@ -221,15 +222,17 @@ Error related to PDF permissions.
 99
 Other error.
 .SH AUTHOR
-The pdftops software and documentation are copyright 1996-2011 Glyph &
+The pdftops software and documentation are copyright 1996-2014 Glyph &
 Cog, LLC.
 .SH "SEE ALSO"
 .BR xpdf (1),
 .BR pdftotext (1),
+.BR pdftohtml (1),
 .BR pdfinfo (1),
 .BR pdffonts (1),
 .BR pdfdetach (1),
 .BR pdftoppm (1),
+.BR pdftopng (1),
 .BR pdfimages (1),
 .BR xpdfrc (5)
 .br

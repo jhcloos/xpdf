@@ -10,8 +10,9 @@
 
 #include <aconf.h>
 
-#ifdef WIN32
+#ifdef _WIN32
 #  include <time.h>
+#  include <direct.h>
 #else
 #  if defined(MACOS)
 #    include <sys/stat.h>
@@ -29,7 +30,7 @@
 #  if defined(VMS) && (__DECCXX_VER < 50200000)
 #    include <unixlib.h>
 #  endif
-#endif // WIN32
+#endif // _WIN32
 #include "GString.h"
 #include "gfile.h"
 
@@ -46,7 +47,7 @@ GString *getHomeDir() {
   //---------- VMS ----------
   return new GString("SYS$LOGIN:");
 
-#elif defined(__EMX__) || defined(WIN32)
+#elif defined(__EMX__) || defined(_WIN32)
   //---------- OS/2+EMX and Win32 ----------
   char *s;
   GString *ret;
@@ -92,8 +93,8 @@ GString *getCurrentDir() {
 
 #if defined(__EMX__)
   if (_getcwd2(buf, sizeof(buf)))
-#elif defined(WIN32)
-  if (GetCurrentDirectory(sizeof(buf), buf))
+#elif defined(_WIN32)
+  if (GetCurrentDirectoryA(sizeof(buf), buf))
 #elif defined(ACORN)
   if (strcpy(buf, "@"))
 #elif defined(MACOS)
@@ -146,7 +147,7 @@ GString *appendToPath(GString *path, const char *fileName) {
   }
   return path;
 
-#elif defined(WIN32)
+#elif defined(_WIN32)
   //---------- Win32 ----------
   GString *tmp;
   char buf[256];
@@ -155,7 +156,7 @@ GString *appendToPath(GString *path, const char *fileName) {
   tmp = new GString(path);
   tmp->append('/');
   tmp->append(fileName);
-  GetFullPathName(tmp->getCString(), sizeof(buf), buf, &fp);
+  GetFullPathNameA(tmp->getCString(), sizeof(buf), buf, &fp);
   delete tmp;
   path->clear();
   path->append(buf);
@@ -282,7 +283,7 @@ GString *grabPath(char *fileName) {
     return new GString(fileName, p + 1 - fileName);
   return new GString();
 
-#elif defined(__EMX__) || defined(WIN32)
+#elif defined(__EMX__) || defined(_WIN32)
   //---------- OS/2+EMX and Win32 ----------
   char *p;
 
@@ -326,7 +327,7 @@ GBool isAbsolutePath(char *path) {
   return strchr(path, ':') ||
 	 (path[0] == '[' && path[1] != '.' && path[1] != '-');
 
-#elif defined(__EMX__) || defined(WIN32)
+#elif defined(__EMX__) || defined(_WIN32)
   //---------- OS/2+EMX and Win32 ----------
   return path[0] == '/' || path[0] == '\\' || path[1] == ':';
 
@@ -356,13 +357,13 @@ GString *makePathAbsolute(GString *path) {
   }
   return path;
 
-#elif defined(WIN32)
+#elif defined(_WIN32)
   //---------- Win32 ----------
   char buf[_MAX_PATH];
   char *fp;
 
   buf[0] = '\0';
-  if (!GetFullPathName(path->getCString(), _MAX_PATH, buf, &fp)) {
+  if (!GetFullPathNameA(path->getCString(), _MAX_PATH, buf, &fp)) {
     path->clear();
     return path;
   }
@@ -427,7 +428,7 @@ GString *makePathAbsolute(GString *path) {
 }
 
 time_t getModTime(char *fileName) {
-#ifdef WIN32
+#ifdef _WIN32
   //~ should implement this, but it's (currently) only used in xpdf
   return 0;
 #else
@@ -440,8 +441,9 @@ time_t getModTime(char *fileName) {
 #endif
 }
 
-GBool openTempFile(GString **name, FILE **f, const char *mode, char *ext) {
-#if defined(WIN32)
+GBool openTempFile(GString **name, FILE **f,
+		   const char *mode, const char *ext) {
+#if defined(_WIN32)
   //---------- Win32 ----------
   char *tempDir;
   GString *s, *s2;
@@ -550,6 +552,14 @@ GBool openTempFile(GString **name, FILE **f, const char *mode, char *ext) {
 #endif
 }
 
+GBool createDir(char *path, int mode) {
+#ifdef _WIN32
+  return !mkdir(path);
+#else
+  return !mkdir(path, mode);
+#endif
+}
+
 GBool executeCommand(char *cmd) {
 #ifdef VMS
   return system(cmd) ? gTrue : gFalse;
@@ -558,7 +568,7 @@ GBool executeCommand(char *cmd) {
 #endif
 }
 
-#ifdef WIN32
+#ifdef _WIN32
 GString *fileNameToUTF8(char *path) {
   GString *s;
   char *p;
@@ -597,7 +607,7 @@ GString *fileNameToUTF8(wchar_t *path) {
 #endif
 
 FILE *openFile(const char *path, const char *mode) {
-#ifdef WIN32
+#ifdef _WIN32
   OSVERSIONINFO version;
   wchar_t wPath[_MAX_PATH + 1];
   char nPath[_MAX_PATH + 1];
@@ -688,6 +698,30 @@ char *getLine(char *buf, int size, FILE *f) {
   return buf;
 }
 
+int gfseek(FILE *f, GFileOffset offset, int whence) {
+#if HAVE_FSEEKO
+  return fseeko(f, offset, whence);
+#elif HAVE_FSEEK64
+  return fseek64(f, offset, whence);
+#elif HAVE_FSEEKI64
+  return _fseeki64(f, offset, whence);
+#else
+  return fseek(f, offset, whence);
+#endif
+}
+
+GFileOffset gftell(FILE *f) {
+#if HAVE_FSEEKO
+  return ftello(f);
+#elif HAVE_FSEEK64
+  return ftell64(f);
+#elif HAVE_FSEEKI64
+  return _ftelli64(f);
+#else
+  return ftell(f);
+#endif
+}
+
 //------------------------------------------------------------------------
 // GDir and GDirEntry
 //------------------------------------------------------------------------
@@ -695,7 +729,7 @@ char *getLine(char *buf, int size, FILE *f) {
 GDirEntry::GDirEntry(char *dirPath, char *nameA, GBool doStat) {
 #ifdef VMS
   char *p;
-#elif defined(WIN32)
+#elif defined(_WIN32)
   int fa;
   GString *s;
 #elif defined(ACORN)
@@ -715,8 +749,8 @@ GDirEntry::GDirEntry(char *dirPath, char *nameA, GBool doStat) {
 #else
     s = new GString(dirPath);
     appendToPath(s, nameA);
-#ifdef WIN32
-    fa = GetFileAttributes(s->getCString());
+#ifdef _WIN32
+    fa = GetFileAttributesA(s->getCString());
     dir = (fa != 0xFFFFFFFF && (fa & FILE_ATTRIBUTE_DIRECTORY));
 #else
     if (stat(s->getCString(), &st) == 0)
@@ -734,15 +768,16 @@ GDirEntry::~GDirEntry() {
 GDir::GDir(char *name, GBool doStatA) {
   path = new GString(name);
   doStat = doStatA;
-#if defined(WIN32)
+#if defined(_WIN32)
   GString *tmp;
 
   tmp = path->copy();
   tmp->append("/*.*");
-  hnd = FindFirstFile(tmp->getCString(), &ffd);
+  hnd = FindFirstFileA(tmp->getCString(), &ffd);
   delete tmp;
 #elif defined(ACORN)
 #elif defined(MACOS)
+#elif defined(ANDROID)
 #else
   dir = opendir(name);
 #ifdef VMS
@@ -753,13 +788,14 @@ GDir::GDir(char *name, GBool doStatA) {
 
 GDir::~GDir() {
   delete path;
-#if defined(WIN32)
+#if defined(_WIN32)
   if (hnd) {
     FindClose(hnd);
     hnd = NULL;
   }
 #elif defined(ACORN)
 #elif defined(MACOS)
+#elif defined(ANDROID)
 #else
   if (dir)
     closedir(dir);
@@ -769,10 +805,10 @@ GDir::~GDir() {
 GDirEntry *GDir::getNextEntry() {
   GDirEntry *e;
 
-#if defined(WIN32)
+#if defined(_WIN32)
   if (hnd) {
     e = new GDirEntry(path->getCString(), ffd.cFileName, doStat);
-    if (hnd  && !FindNextFile(hnd, &ffd)) {
+    if (hnd  && !FindNextFileA(hnd, &ffd)) {
       FindClose(hnd);
       hnd = NULL;
     }
@@ -781,6 +817,7 @@ GDirEntry *GDir::getNextEntry() {
   }
 #elif defined(ACORN)
 #elif defined(MACOS)
+#elif defined(ANDROID)
 #elif defined(VMS)
   struct dirent *ent;
   e = NULL;
@@ -813,17 +850,18 @@ GDirEntry *GDir::getNextEntry() {
 }
 
 void GDir::rewind() {
-#ifdef WIN32
+#ifdef _WIN32
   GString *tmp;
 
   if (hnd)
     FindClose(hnd);
   tmp = path->copy();
   tmp->append("/*.*");
-  hnd = FindFirstFile(tmp->getCString(), &ffd);
+  hnd = FindFirstFileA(tmp->getCString(), &ffd);
   delete tmp;
 #elif defined(ACORN)
 #elif defined(MACOS)
+#elif defined(ANDROID)
 #else
   if (dir)
     rewinddir(dir);

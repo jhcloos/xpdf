@@ -112,6 +112,7 @@ public:
 
   // Convert between device and user coordinates.
   virtual void cvtDevToUser(double dx, double dy, double *ux, double *uy);
+  virtual void cvtUserToDev(double ux, double uy, double *dx, double *dy);
   virtual void cvtUserToDev(double ux, double uy, int *dx, int *dy);
 
   double *getDefCTM() { return defCTM; }
@@ -161,7 +162,7 @@ public:
   virtual void stroke(GfxState *state) {}
   virtual void fill(GfxState *state) {}
   virtual void eoFill(GfxState *state) {}
-  virtual void tilingPatternFill(GfxState *state, Gfx *gfx, Object *str,
+  virtual void tilingPatternFill(GfxState *state, Gfx *gfx, Object *strRef,
 				 int paintType, Dict *resDict,
 				 double *mat, double *bbox,
 				 int x0, int y0, int x1, int y1,
@@ -201,25 +202,26 @@ public:
   //----- image drawing
   virtual void drawImageMask(GfxState *state, Object *ref, Stream *str,
 			     int width, int height, GBool invert,
-			     GBool inlineImg);
+			     GBool inlineImg, GBool interpolate);
   virtual void setSoftMaskFromImageMask(GfxState *state,
 					Object *ref, Stream *str,
 					int width, int height, GBool invert,
-					GBool inlineImg);
+					GBool inlineImg, GBool interpolate);
   virtual void drawImage(GfxState *state, Object *ref, Stream *str,
 			 int width, int height, GfxImageColorMap *colorMap,
-			 int *maskColors, GBool inlineImg);
+			 int *maskColors, GBool inlineImg, GBool interpolate);
   virtual void drawMaskedImage(GfxState *state, Object *ref, Stream *str,
 			       int width, int height,
 			       GfxImageColorMap *colorMap,
 			       Stream *maskStr, int maskWidth, int maskHeight,
-			       GBool maskInvert);
+			       GBool maskInvert, GBool interpolate);
   virtual void drawSoftMaskedImage(GfxState *state, Object *ref, Stream *str,
 				   int width, int height,
 				   GfxImageColorMap *colorMap,
 				   Stream *maskStr,
 				   int maskWidth, int maskHeight,
-				   GfxImageColorMap *maskColorMap);
+				   GfxImageColorMap *maskColorMap,
+				   GBool interpolate);
 
 #if OPI_SUPPORT
   //----- OPI functions

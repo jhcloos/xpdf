@@ -2,7 +2,7 @@
 //
 // pdftotext.cc
 //
-// Copyright 1997-2003 Glyph & Cog, LLC
+// Copyright 1997-2013 Glyph & Cog, LLC
 //
 //========================================================================
 
@@ -11,6 +11,10 @@
 #include <stdlib.h>
 #include <stddef.h>
 #include <string.h>
+#ifdef DEBUG_FP_LINUX
+#  include <fenv.h>
+#  include <fpu_control.h>
+#endif
 #include "parseargs.h"
 #include "GString.h"
 #include "gmem.h"
@@ -26,21 +30,19 @@
 #include "TextOutputDev.h"
 #include "CharTypes.h"
 #include "UnicodeMap.h"
+#include "TextString.h"
 #include "Error.h"
 #include "config.h"
-
-static void printInfoString(FILE *f, Dict *infoDict, const char *key,
-			    const char *text1, const char *text2,
-			    UnicodeMap *uMap);
-static void printInfoDate(FILE *f, Dict *infoDict, const char *key,
-			  const char *fmt);
 
 static int firstPage = 1;
 static int lastPage = 0;
 static GBool physLayout = gFalse;
-static double fixedPitch = 0;
+static GBool tableLayout = gFalse;
+static GBool linePrinter = gFalse;
 static GBool rawOrder = gFalse;
-static GBool htmlMeta = gFalse;
+static double fixedPitch = 0;
+static double fixedLineSpacing = 0;
+static GBool clipText = gFalse;
 static char textEncName[128] = "";
 static char textEOL[16] = "";
 static GBool noPageBreaks = gFalse;
@@ -58,12 +60,18 @@ static ArgDesc argDesc[] = {
    "last page to convert"},
   {"-layout",  argFlag,     &physLayout,    0,
    "maintain original physical layout"},
-  {"-fixed",   argFP,       &fixedPitch,    0,
-   "assume fixed-pitch (or tabular) text"},
+  {"-table",   argFlag,     &tableLayout,   0,
+   "similar to -layout, but optimized for tables"},
+  {"-lineprinter", argFlag, &linePrinter,   0,
+   "use strict fixed-pitch/height layout"},
   {"-raw",     argFlag,     &rawOrder,      0,
    "keep strings in content stream order"},
-  {"-htmlmeta", argFlag,   &htmlMeta,       0,
-   "generate a simple HTML file, including the meta information"},
+  {"-fixed",   argFP,       &fixedPitch,    0,
+   "assume fixed-pitch (or tabular) text"},
+  {"-linespacing", argFP,   &fixedLineSpacing, 0,
+   "fixed line spacing for LinePrinter mode"},
+  {"-clip",    argFlag,     &clipText,      0,
+   "separate clipped text"},
   {"-enc",     argString,   textEncName,    sizeof(textEncName),
    "output text encoding name"},
   {"-eol",     argString,   textEOL,        sizeof(textEOL),
@@ -96,13 +104,28 @@ int main(int argc, char *argv[]) {
   GString *fileName;
   GString *textFileName;
   GString *ownerPW, *userPW;
+  TextOutputControl textOutControl;
   TextOutputDev *textOut;
-  FILE *f;
   UnicodeMap *uMap;
   Object info;
   GBool ok;
   char *p;
   int exitCode;
+
+#ifdef DEBUG_FP_LINUX
+  // enable exceptions on floating point div-by-zero
+  feenableexcept(FE_DIVBYZERO);
+  // force 64-bit rounding: this avoids changes in output when minor
+  // code changes result in spills of x87 registers; it also avoids
+  // differences in output with valgrind's 64-bit floating point
+  // emulation (yes, this is a kludge; but it's pretty much
+  // unavoidable given the x87 instruction set; see gcc bug 323 for
+  // more info)
+  fpu_control_t cw; 
+  _FPU_GETCW(cw);
+  cw = (cw & ~_FPU_EXTENDED) | _FPU_DOUBLE;
+  _FPU_SETCW(cw);
+#endif
 
   exitCode = 99;
 
@@ -117,9 +140,6 @@ int main(int argc, char *argv[]) {
     goto err0;
   }
   fileName = new GString(argv[1]);
-  if (fixedPitch) {
-    physLayout = gTrue;
-  }
 
   // read config file
   globalParams = new GlobalParams(cfgFileName);
@@ -187,7 +207,7 @@ int main(int argc, char *argv[]) {
     } else {
       textFileName = fileName->copy();
     }
-    textFileName->append(htmlMeta ? ".html" : ".txt");
+    textFileName->append(".txt");
   }
 
   // get page range
@@ -198,50 +218,25 @@ int main(int argc, char *argv[]) {
     lastPage = doc->getNumPages();
   }
 
-  // write HTML header
-  if (htmlMeta) {
-    if (!textFileName->cmp("-")) {
-      f = stdout;
-    } else {
-      if (!(f = fopen(textFileName->getCString(), "wb"))) {
-	error(errIO, -1, "Couldn't open text file '{0:t}'", textFileName);
-	exitCode = 2;
-	goto err3;
-      }
-    }
-    fputs("<html>\n", f);
-    fputs("<head>\n", f);
-    doc->getDocInfo(&info);
-    if (info.isDict()) {
-      printInfoString(f, info.getDict(), "Title", "<title>", "</title>\n",
-		      uMap);
-      printInfoString(f, info.getDict(), "Subject",
-		      "<meta name=\"Subject\" content=\"", "\">\n", uMap);
-      printInfoString(f, info.getDict(), "Keywords",
-		      "<meta name=\"Keywords\" content=\"", "\">\n", uMap);
-      printInfoString(f, info.getDict(), "Author",
-		      "<meta name=\"Author\" content=\"", "\">\n", uMap);
-      printInfoString(f, info.getDict(), "Creator",
-		      "<meta name=\"Creator\" content=\"", "\">\n", uMap);
-      printInfoString(f, info.getDict(), "Producer",
-		      "<meta name=\"Producer\" content=\"", "\">\n", uMap);
-      printInfoDate(f, info.getDict(), "CreationDate",
-		    "<meta name=\"CreationDate\" content=\"%s\">\n");
-      printInfoDate(f, info.getDict(), "LastModifiedDate",
-		    "<meta name=\"ModDate\" content=\"%s\">\n");
-    }
-    info.free();
-    fputs("</head>\n", f);
-    fputs("<body>\n", f);
-    fputs("<pre>\n", f);
-    if (f != stdout) {
-      fclose(f);
-    }
-  }
-
   // write text file
-  textOut = new TextOutputDev(textFileName->getCString(),
-			      physLayout, fixedPitch, rawOrder, htmlMeta);
+  if (tableLayout) {
+    textOutControl.mode = textOutTableLayout;
+    textOutControl.fixedPitch = fixedPitch;
+  } else if (physLayout) {
+    textOutControl.mode = textOutPhysLayout;
+    textOutControl.fixedPitch = fixedPitch;
+  } else if (linePrinter) {
+    textOutControl.mode = textOutLinePrinter;
+    textOutControl.fixedPitch = fixedPitch;
+    textOutControl.fixedLineSpacing = fixedLineSpacing;
+  } else if (rawOrder) {
+    textOutControl.mode = textOutRawOrder;
+  } else {
+    textOutControl.mode = textOutReadingOrder;
+  }
+  textOutControl.clipText = clipText;
+  textOut = new TextOutputDev(textFileName->getCString(), &textOutControl,
+			      gFalse);
   if (textOut->isOk()) {
     doc->displayPages(textOut, firstPage, lastPage, 72, 72, 0,
 		      gFalse, gTrue, gFalse);
@@ -251,25 +246,6 @@ int main(int argc, char *argv[]) {
     goto err3;
   }
   delete textOut;
-
-  // write end of HTML file
-  if (htmlMeta) {
-    if (!textFileName->cmp("-")) {
-      f = stdout;
-    } else {
-      if (!(f = fopen(textFileName->getCString(), "ab"))) {
-	error(errIO, -1, "Couldn't open text file '{0:t}'", textFileName);
-	exitCode = 2;
-	goto err3;
-      }
-    }
-    fputs("</pre>\n", f);
-    fputs("</body>\n", f);
-    fputs("</html>\n", f);
-    if (f != stdout) {
-      fclose(f);
-    }
-  }
 
   exitCode = 0;
 
@@ -288,57 +264,4 @@ int main(int argc, char *argv[]) {
   gMemReport(stderr);
 
   return exitCode;
-}
-
-static void printInfoString(FILE *f, Dict *infoDict, const char *key,
-			    const char *text1, const char *text2,
-			    UnicodeMap *uMap) {
-  Object obj;
-  GString *s1;
-  GBool isUnicode;
-  Unicode u;
-  char buf[8];
-  int i, n;
-
-  if (infoDict->lookup(key, &obj)->isString()) {
-    fputs(text1, f);
-    s1 = obj.getString();
-    if ((s1->getChar(0) & 0xff) == 0xfe &&
-	(s1->getChar(1) & 0xff) == 0xff) {
-      isUnicode = gTrue;
-      i = 2;
-    } else {
-      isUnicode = gFalse;
-      i = 0;
-    }
-    while (i < obj.getString()->getLength()) {
-      if (isUnicode) {
-	u = ((s1->getChar(i) & 0xff) << 8) |
-	    (s1->getChar(i+1) & 0xff);
-	i += 2;
-      } else {
-	u = s1->getChar(i) & 0xff;
-	++i;
-      }
-      n = uMap->mapUnicode(u, buf, sizeof(buf));
-      fwrite(buf, 1, n, f);
-    }
-    fputs(text2, f);
-  }
-  obj.free();
-}
-
-static void printInfoDate(FILE *f, Dict *infoDict, const char *key,
-			  const char *fmt) {
-  Object obj;
-  char *s;
-
-  if (infoDict->lookup(key, &obj)->isString()) {
-    s = obj.getString()->getCString();
-    if (s[0] == 'D' && s[1] == ':') {
-      s += 2;
-    }
-    fprintf(f, fmt, s);
-  }
-  obj.free();
 }

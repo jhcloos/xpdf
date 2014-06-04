@@ -43,6 +43,11 @@ void OutputDev::cvtDevToUser(double dx, double dy, double *ux, double *uy) {
   *uy = defICTM[1] * dx + defICTM[3] * dy + defICTM[5];
 }
 
+void OutputDev::cvtUserToDev(double ux, double uy, double *dx, double *dy) {
+  *dx = defCTM[0] * ux + defCTM[2] * uy + defCTM[4];
+  *dy = defCTM[1] * ux + defCTM[3] * uy + defCTM[5];
+}
+
 void OutputDev::cvtUserToDev(double ux, double uy, int *dx, int *dy) {
   *dx = (int)(defCTM[0] * ux + defCTM[2] * uy + defCTM[4] + 0.5);
   *dy = (int)(defCTM[1] * ux + defCTM[3] * uy + defCTM[5] + 0.5);
@@ -78,14 +83,10 @@ GBool OutputDev::beginType3Char(GfxState *state, double x, double y,
 
 void OutputDev::drawImageMask(GfxState *state, Object *ref, Stream *str,
 			      int width, int height, GBool invert,
-			      GBool inlineImg) {
-  int i, j;
-
+			      GBool inlineImg, GBool interpolate) {
   if (inlineImg) {
     str->reset();
-    j = height * ((width + 7) / 8);
-    for (i = 0; i < j; ++i)
-      str->getChar();
+    str->discardChars(height * ((width + 7) / 8));
     str->close();
   }
 }
@@ -93,21 +94,17 @@ void OutputDev::drawImageMask(GfxState *state, Object *ref, Stream *str,
 void OutputDev::setSoftMaskFromImageMask(GfxState *state,
 					 Object *ref, Stream *str,
 					 int width, int height, GBool invert,
-					 GBool inlineImg) {
-  drawImageMask(state, ref, str, width, height, invert, inlineImg);
+					 GBool inlineImg, GBool interpolate) {
+  drawImageMask(state, ref, str, width, height, invert, inlineImg, interpolate);
 }
 
 void OutputDev::drawImage(GfxState *state, Object *ref, Stream *str,
 			  int width, int height, GfxImageColorMap *colorMap,
-			  int *maskColors, GBool inlineImg) {
-  int i, j;
-
+			  int *maskColors, GBool inlineImg, GBool interpolate) {
   if (inlineImg) {
     str->reset();
-    j = height * ((width * colorMap->getNumPixelComps() *
-		   colorMap->getBits() + 7) / 8);
-    for (i = 0; i < j; ++i)
-      str->getChar();
+    str->discardChars(height * ((width * colorMap->getNumPixelComps() *
+				 colorMap->getBits() + 7) / 8));
     str->close();
   }
 }
@@ -117,8 +114,9 @@ void OutputDev::drawMaskedImage(GfxState *state, Object *ref, Stream *str,
 				GfxImageColorMap *colorMap,
 				Stream *maskStr,
 				int maskWidth, int maskHeight,
-				GBool maskInvert) {
-  drawImage(state, ref, str, width, height, colorMap, NULL, gFalse);
+				GBool maskInvert, GBool interpolate) {
+  drawImage(state, ref, str, width, height, colorMap, NULL, gFalse,
+	    interpolate);
 }
 
 void OutputDev::drawSoftMaskedImage(GfxState *state, Object *ref, Stream *str,
@@ -126,8 +124,10 @@ void OutputDev::drawSoftMaskedImage(GfxState *state, Object *ref, Stream *str,
 				    GfxImageColorMap *colorMap,
 				    Stream *maskStr,
 				    int maskWidth, int maskHeight,
-				    GfxImageColorMap *maskColorMap) {
-  drawImage(state, ref, str, width, height, colorMap, NULL, gFalse);
+				    GfxImageColorMap *maskColorMap,
+				    GBool interpolate) {
+  drawImage(state, ref, str, width, height, colorMap, NULL, gFalse,
+	    interpolate);
 }
 
 #if OPI_SUPPORT

@@ -17,14 +17,11 @@
 
 #include "Object.h"
 
+struct DictEntry;
+
 //------------------------------------------------------------------------
 // Dict
 //------------------------------------------------------------------------
-
-struct DictEntry {
-  char *key;
-  Object val;
-};
 
 class Dict {
 public:
@@ -67,11 +64,14 @@ private:
 
   XRef *xref;			// the xref table for this PDF file
   DictEntry *entries;		// array of entries
+  DictEntry **hashTab;		// hash table pointers
   int size;			// size of <entries> array
   int length;			// number of entries in dictionary
   int ref;			// reference count
 
   DictEntry *find(const char *key);
+  void expand();
+  int hash(const char *key);
 };
 
 #endif

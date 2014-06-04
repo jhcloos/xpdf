@@ -1,8 +1,8 @@
-.\" Copyright 1997-2011 Glyph & Cog, LLC
-.TH pdftotext 1 "15 August 2011"
+.\" Copyright 1997-2014 Glyph & Cog, LLC
+.TH pdftotext 1 "28 May 2014"
 .SH NAME
 pdftotext \- Portable Document Format (PDF) to text converter
-(version 3.03)
+(version 3.04)
 .SH SYNOPSIS
 .B pdftotext
 [options]
@@ -47,21 +47,50 @@ Specifies the last page to convert.
 .B \-layout
 Maintain (as best as possible) the original physical layout of the
 text.  The default is to \'undo' physical layout (columns,
-hyphenation, etc.) and output the text in reading order.
+hyphenation, etc.) and output the text in reading order.  If the
+.B \-fixed
+option is given, character spacing within each line will be determined
+by the specified character pitch.
 .TP
-.BI \-fixed " number"
-Assume fixed-pitch (or tabular) text, with the specified character
-width (in points).  This forces physical layout mode.
+.B \-table
+Table mode is similar to physical layout mode, but optimized for
+tabular data, with the goal of keeping rows and columns aligned (at
+the expense of inserting extra whitespace).  If the
+.B \-fixed
+option is given, character spacing within each line will be determined
+by the specified character pitch.
+.TP
+.B \-lineprinter
+Line printer mode uses a strict fixed-character-pitch and -height
+layout.  That is, the page is broken into a grid, and characters are
+placed into that grid.  If the grid spacing is too small for the
+actual characters, the result is extra whitespace.  If the grid
+spacing is too large, the result is missing whitespace.  The grid
+spacing can be specified using the
+.B \-fixed
+and
+.B \-linespacing
+options.
+If one or both are not given on the command line, pdftotext will
+attempt to compute appropriate value(s).
 .TP
 .B \-raw
-Keep the text in content stream order.  This is a hack which often
-"undoes" column formatting, etc.  Use of raw mode is no longer
-recommended.
+Keep the text in content stream order.  Depending on how the PDF file
+was generated, this may or may not be useful.
 .TP
-.B \-htmlmeta
-Generate a simple HTML file, including the meta information.  This
-simply wraps the text in <pre> and </pre> and prepends the meta
-headers.
+.BI \-fixed " number"
+Specify the character pitch (character width), in points, for physical
+layout, table, or line printer mode.  This is ignored in all other
+modes.
+.TP
+.BI \-linespacing " number"
+Specify the line spacing, in points, for line printer mode.  This is
+ignored in all other modes.
+.TP
+.B \-clip
+Text which is hidden because of clipping is removed before doing
+layout, and then added back in.  This can be helpful for tables where
+clipped (invisible) text would overlap the next column.
 .TP
 .BI \-enc " encoding-name"
 Sets the encoding to use for text output.  The
@@ -127,15 +156,17 @@ Error related to PDF permissions.
 99
 Other error.
 .SH AUTHOR
-The pdftotext software and documentation are copyright 1996-2011 Glyph
+The pdftotext software and documentation are copyright 1996-2014 Glyph
 & Cog, LLC.
 .SH "SEE ALSO"
 .BR xpdf (1),
 .BR pdftops (1),
+.BR pdftohtml (1),
 .BR pdfinfo (1),
 .BR pdffonts (1),
 .BR pdfdetach (1),
 .BR pdftoppm (1),
+.BR pdftopng (1),
 .BR pdfimages (1),
 .BR xpdfrc (5)
 .br

@@ -108,6 +108,7 @@ private:
   Guint nBytesRead;
   int dataLen;
   GBool limitStream;
+  int readBuf;
 };
 
 #endif

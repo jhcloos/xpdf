@@ -32,6 +32,9 @@ enum LinkActionKind {
   actionURI,			// URI
   actionNamed,			// named action
   actionMovie,			// movie action
+  actionJavaScript,		// run JavaScript
+  actionSubmitForm,		// submit form
+  actionHide,			// hide annotation
   actionUnknown			// anything else
 };
 
@@ -244,8 +247,10 @@ public:
 
   virtual ~LinkNamed();
 
+  // Was the LinkNamed created successfully?
   virtual GBool isOk() { return name != NULL; }
 
+  // Accessors.
   virtual LinkActionKind getKind() { return actionNamed; }
   GString *getName() { return name; }
 
@@ -265,8 +270,10 @@ public:
 
   virtual ~LinkMovie();
 
+  // Was the LinkMovie created successfully?
   virtual GBool isOk() { return annotRef.num >= 0 || title != NULL; }
 
+  // Accessors.
   virtual LinkActionKind getKind() { return actionMovie; }
   GBool hasAnnotRef() { return annotRef.num >= 0; }
   Ref *getAnnotRef() { return &annotRef; }
@@ -276,6 +283,81 @@ private:
 
   Ref annotRef;
   GString *title;
+};
+
+//------------------------------------------------------------------------
+// LinkJavaScript
+//------------------------------------------------------------------------
+
+class LinkJavaScript: public LinkAction {
+public:
+
+  LinkJavaScript(Object *jsObj);
+
+  virtual ~LinkJavaScript();
+
+  // Was the LinkJavaScript created successfully?
+  virtual GBool isOk() { return js != NULL; }
+
+  // Accessors.
+  virtual LinkActionKind getKind() { return actionJavaScript; }
+  GString *getJS() { return js; }
+
+private:
+
+  GString *js;
+};
+
+//------------------------------------------------------------------------
+// LinkSubmitForm
+//------------------------------------------------------------------------
+
+class LinkSubmitForm: public LinkAction {
+public:
+
+  LinkSubmitForm(Object *urlObj, Object *fieldsObj, Object *flagsObj);
+
+  virtual ~LinkSubmitForm();
+
+  // Was the LinkSubmitForm created successfully?
+  virtual GBool isOk() { return url != NULL; }
+
+  // Accessors.
+  virtual LinkActionKind getKind() { return actionSubmitForm; }
+  GString *getURL() { return url; }
+  Object *getFields() { return &fields; }
+  int getFlags() { return flags; }
+
+private:
+
+  GString *url;
+  Object fields;
+  int flags;
+};
+
+//------------------------------------------------------------------------
+// LinkHide
+//------------------------------------------------------------------------
+
+class LinkHide: public LinkAction {
+public:
+
+  LinkHide(Object *fieldsObj, Object *hideFlagObj);
+
+  virtual ~LinkHide();
+
+  // Was the LinkHide created successfully?
+  virtual GBool isOk() { return !fields.isNull(); }
+
+  // Accessors.
+  virtual LinkActionKind getKind() { return actionHide; }
+  Object *getFields() { return &fields; }
+  GBool getHideFlag() { return hideFlag; }
+
+private:
+
+  Object fields;
+  GBool hideFlag;
 };
 
 //------------------------------------------------------------------------

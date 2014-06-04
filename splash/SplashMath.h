@@ -2,6 +2,8 @@
 //
 // SplashMath.h
 //
+// Copyright 2003-2013 Glyph & Cog, LLC
+//
 //========================================================================
 
 #ifndef SPLASHMATH_H
@@ -35,19 +37,18 @@ static inline int splashFloor(SplashCoord x) {
   Gushort oldCW, newCW, t;
   int result;
 
-  __asm__ volatile("fldl   %4\n"
-		   "fnstcw %0\n"
+  __asm__ volatile("fnstcw %0\n"
 		   "movw   %0, %3\n"
 		   "andw   $0xf3ff, %3\n"
 		   "orw    $0x0400, %3\n"
 		   "movw   %3, %1\n"       // round down
 		   "fldcw  %1\n"
-		   "fistpl %2\n"
+		   "fistl %2\n"
 		   "fldcw  %0\n"
 		   : "=m" (oldCW), "=m" (newCW), "=m" (result), "=r" (t)
-		   : "m" (x));
+		   : "t" (x));
   return result;
-#elif defined(WIN32) && defined(_M_IX86)
+#elif defined(_WIN32) && defined(_M_IX86)
   // floor() and (int)() are implemented separately, which results
   // in changing the FPCW multiple times - so we optimize it with
   // some inline assembly
@@ -81,19 +82,18 @@ static inline int splashCeil(SplashCoord x) {
   Gushort oldCW, newCW, t;
   int result;
 
-  __asm__ volatile("fldl   %4\n"
-		   "fnstcw %0\n"
+  __asm__ volatile("fnstcw %0\n"
 		   "movw   %0, %3\n"
 		   "andw   $0xf3ff, %3\n"
 		   "orw    $0x0800, %3\n"
 		   "movw   %3, %1\n"       // round up
 		   "fldcw  %1\n"
-		   "fistpl %2\n"
+		   "fistl %2\n"
 		   "fldcw  %0\n"
 		   : "=m" (oldCW), "=m" (newCW), "=m" (result), "=r" (t)
-		   : "m" (x));
+		   : "t" (x));
   return result;
-#elif defined(WIN32) && defined(_M_IX86)
+#elif defined(_WIN32) && defined(_M_IX86)
   // ceil() and (int)() are implemented separately, which results
   // in changing the FPCW multiple times - so we optimize it with
   // some inline assembly
@@ -128,19 +128,18 @@ static inline int splashRound(SplashCoord x) {
   int result;
 
   x += 0.5;
-  __asm__ volatile("fldl   %4\n"
-		   "fnstcw %0\n"
+  __asm__ volatile("fnstcw %0\n"
 		   "movw   %0, %3\n"
 		   "andw   $0xf3ff, %3\n"
 		   "orw    $0x0400, %3\n"
 		   "movw   %3, %1\n"       // round down
 		   "fldcw  %1\n"
-		   "fistpl %2\n"
+		   "fistl %2\n"
 		   "fldcw  %0\n"
 		   : "=m" (oldCW), "=m" (newCW), "=m" (result), "=r" (t)
-		   : "m" (x));
+		   : "t" (x));
   return result;
-#elif defined(WIN32) && defined(_M_IX86)
+#elif defined(_WIN32) && defined(_M_IX86)
   // this could use round-to-nearest mode and avoid the "+0.5",
   // but that produces slightly different results (because i+0.5
   // sometimes rounds up and sometimes down using the even rule)
@@ -221,6 +220,70 @@ static inline GBool splashCheckDet(SplashCoord m11, SplashCoord m12,
 #else
   return fabs(m11 * m22 - m12 * m21) >= epsilon;
 #endif
+}
+
+// Perform stroke adjustment on a SplashCoord range [xMin, xMax),
+// resulting in an int range [*xMinI, *xMaxI).
+//
+// There are several options:
+//
+// 1. Round both edge coordinates.
+//    Pro: adjacent strokes/fills line up without any gaps or
+//         overlaps
+//    Con: lines with the same original floating point width can
+//         end up with different integer widths, e.g.:
+//               xMin  = 10.1   xMax  = 11.3   (width = 1.2)
+//           --> xMinI = 10     xMaxI = 11     (width = 1)
+//         but
+//               xMin  = 10.4   xMax  = 11.6   (width = 1.2)
+//           --> xMinI = 10     xMaxI = 12     (width = 2)
+//
+// 2. Round the min coordinate; add the ceiling of the width.
+//    Pro: lines with the same original floating point width will
+//         always end up with the same integer width
+//    Con: adjacent strokes/fills can have overlaps (which is
+//         problematic with transparency)
+//    (This could use floor on the min coordinate, instead of
+//    rounding, with similar results.)
+//    (If the width is rounded instead of using ceiling, the results
+//    Are similar, except that adjacent strokes/fills can have gaps
+//    as well as overlaps.)
+//
+// 3. Use floor on the min coordinate and ceiling on the max
+//    coordinate.
+//    Pro: lines always end up at least as wide as the original
+//         floating point width
+//    Con: adjacent strokes/fills can have overlaps, and lines with
+//         the same original floating point width can end up with
+//         different integer widths; the integer width can be more
+//         than one pixel wider than the original width, e.g.:
+//               xMin  = 10.9   xMax  = 12.1   (width = 1.2)
+//           --> xMinI = 10     xMaxI = 13     (width = 3)
+//         but
+//               xMin  = 10.1   xMax  = 11.3   (width = 1.2)
+//           --> xMinI = 10     xMaxI = 12     (width = 2)
+static inline void splashStrokeAdjust(SplashCoord xMin, SplashCoord xMax,
+				      int *xMinI, int *xMaxI) {
+  int x0, x1;
+
+  // NB: enable exactly one of these.
+#if 1 // 1. Round both edge coordinates.
+  x0 = splashRound(xMin);
+  x1 = splashRound(xMax);
+#endif
+#if 0 // 2. Round the min coordinate; add the ceiling of the width.
+  x0 = splashRound(xMin);
+  x1 = x0 + splashCeil(xMax - xMin);
+#endif
+#if 0 // 3. Use floor on the min coord and ceiling on the max coord.
+  x0 = splashFloor(xMin);
+  x1 = splashCeil(xMax);
+#endif
+  if (x1 == x0) {
+    ++x1;
+  }
+  *xMinI = x0;
+  *xMaxI = x1;
 }
 
 #endif

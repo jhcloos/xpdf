@@ -17,11 +17,12 @@
 
 #include <stdio.h>
 #include "config.h"
+#include "gfile.h"
 
 enum ErrorCategory {
   errSyntaxWarning,	// PDF syntax error which can be worked around;
 			//   output will probably be correct
-  errSyntaxError,	// PDF syntax error which can be worked around;
+  errSyntaxError,	// PDF syntax error which cannot be worked around;
 			//   output will probably be incorrect
   errConfig,		// error in Xpdf config info (xpdfrc file, etc.)
   errCommandLine,	// error in user-supplied parameters, action not
@@ -37,6 +38,7 @@ extern void setErrorCallback(void (*cbk)(void *data, ErrorCategory category,
 					 int pos, char *msg),
 			     void *data);
 
-extern void CDECL error(ErrorCategory category, int pos, const char *msg, ...);
+extern void CDECL error(ErrorCategory category, GFileOffset pos,
+			const char *msg, ...);
 
 #endif

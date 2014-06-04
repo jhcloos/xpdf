@@ -103,6 +103,7 @@ private:
   void cmdAbout(GString *args[], int nArgs, XEvent *event);
   void cmdCloseOutline(GString *args[], int nArgs, XEvent *event);
   void cmdCloseWindow(GString *args[], int nArgs, XEvent *event);
+  void cmdCloseWindowOrQuit(GString *args[], int nArgs, XEvent *event);
   void cmdContinuousMode(GString *args[], int nArgs, XEvent *event);
   void cmdEndPan(GString *args[], int nArgs, XEvent *event);
   void cmdEndSelection(GString *args[], int nArgs, XEvent *event);

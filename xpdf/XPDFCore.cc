@@ -493,7 +493,7 @@ void XPDFCore::doAction(LinkAction *action) {
       }
       s = ((LinkGoToR *)action)->getFileName()->getCString();
       //~ translate path name for VMS (deal with '/')
-      if (isAbsolutePath(s)) {
+      if (isAbsolutePath(s) || !doc->getFileName()) {
 	fileName = new GString(s);
       } else {
 	fileName = appendToPath(grabPath(doc->getFileName()->getCString()), s);
@@ -531,7 +531,7 @@ void XPDFCore::doAction(LinkAction *action) {
     if (!strcmp(s + fileName->getLength() - 4, ".pdf") ||
 	!strcmp(s + fileName->getLength() - 4, ".PDF")) {
       //~ translate path name for VMS (deal with '/')
-      if (isAbsolutePath(s)) {
+      if (isAbsolutePath(s) || !doc->getFileName()) {
 	fileName = fileName->copy();
       } else {
 	fileName = appendToPath(grabPath(doc->getFileName()->getCString()), s);
@@ -640,7 +640,8 @@ void XPDFCore::doAction(LinkAction *action) {
       if (movieAnnot.dictLookup("Movie", &obj1)->isDict()) {
 	if (obj1.dictLookup("F", &obj2)) {
 	  if ((fileName = LinkAction::getFileSpecName(&obj2))) {
-	    if (!isAbsolutePath(fileName->getCString())) {
+	    if (!isAbsolutePath(fileName->getCString()) &&
+		doc->getFileName()) {
 	      fileName2 = appendToPath(
 			      grabPath(doc->getFileName()->getCString()),
 			      fileName->getCString());
@@ -656,6 +657,13 @@ void XPDFCore::doAction(LinkAction *action) {
       }
     }
     movieAnnot.free();
+    break;
+
+  // unsupported action types
+  case actionJavaScript:
+  case actionSubmitForm:
+  case actionHide:
+    error(errSyntaxError, -1, "Unsupported link action type");
     break;
 
   // unknown action type
@@ -1124,6 +1132,9 @@ void XPDFCore::inputCbk(Widget widget, XtPointer ptr, XtPointer callData) {
 	      case actionMovie:
 		s = "[movie]";
 		break;
+	      case actionJavaScript:
+	      case actionSubmitForm:
+	      case actionHide:
 	      case actionUnknown:
 		s = "[unknown link]";
 		break;
@@ -1356,6 +1367,8 @@ void XPDFCore::redrawRect(PDFCoreTile *tileA, int xSrc, int ySrc,
     XFillRectangle(display, drawAreaWin, drawAreaGC,
 		   xDest, yDest, width, height);
   }
+
+  XFlush(display);
 }
 
 void XPDFCore::updateScrollbars() {

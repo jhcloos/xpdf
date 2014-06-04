@@ -119,7 +119,7 @@ clean:
 distclean: clean
 	rm -f config.log config.status config.cache
 	rm -f aconf.h
-	rm -f Makefile goo/Makefile xpdf/Makefile
+	rm -f Makefile goo/Makefile fofi/Makefile splash/Makefile xpdf/Makefile
 	rm -f goo/Makefile.dep fofi/Makefile.dep splash/Makefile.dep xpdf/Makefile.dep
 	rm -f goo/Makefile.in.bak fofi/Makefile.in.bak splash/Makefile.in.bak xpdf/Makefile.in.bak
 	touch goo/Makefile.dep

@@ -16,12 +16,14 @@
 #endif
 
 #include "gtypes.h"
+#include "gfile.h"
 #include "Object.h"
 
 class Dict;
 class Stream;
 class Parser;
 class ObjectStream;
+class XRefPosSet;
 
 //------------------------------------------------------------------------
 // XRef
@@ -34,10 +36,20 @@ enum XRefEntryType {
 };
 
 struct XRefEntry {
-  Guint offset;
+  GFileOffset offset;
   int gen;
   XRefEntryType type;
 };
+
+struct XRefCacheEntry {
+  int num;
+  int gen;
+  Object obj;
+};
+
+#define xrefCacheSize 16
+
+#define objStrCacheSize 4
 
 class XRef {
 public:
@@ -83,7 +95,7 @@ public:
   int getNumObjects() { return last + 1; }
 
   // Return the offset of the last xref table.
-  Guint getLastXRefPos() { return lastXRefPos; }
+  GFileOffset getLastXRefPos() { return lastXRefPos; }
 
   // Return the catalog object reference.
   int getRootNum() { return rootNum; }
@@ -91,7 +103,7 @@ public:
 
   // Get end position for a stream in a damaged file.
   // Returns false if unknown or file is not damaged.
-  GBool getStreamEnd(Guint streamStart, Guint *streamEnd);
+  GBool getStreamEnd(GFileOffset streamStart, GFileOffset *streamEnd);
 
   // Direct access.
   int getSize() { return size; }
@@ -101,7 +113,7 @@ public:
 private:
 
   BaseStream *str;		// input stream
-  Guint start;			// offset in file (to allow for garbage
+  GFileOffset start;		// offset in file (to allow for garbage
 				//   at beginning of file)
   XRefEntry *entries;		// xref entries
   int size;			// size of <entries> array
@@ -110,11 +122,12 @@ private:
   GBool ok;			// true if xref table is valid
   int errCode;			// error code (if <ok> is false)
   Object trailerDict;		// trailer dictionary
-  Guint lastXRefPos;		// offset of last xref table
-  Guint *streamEnds;		// 'endstream' positions - only used in
+  GFileOffset lastXRefPos;	// offset of last xref table
+  GFileOffset *streamEnds;	// 'endstream' positions - only used in
 				//   damaged files
   int streamEndsLen;		// number of valid entries in streamEnds
-  ObjectStream *objStr;		// cached object stream
+  ObjectStream *		// cached object streams
+    objStrs[objStrCacheSize];
   GBool encrypted;		// true if file is encrypted
   int permFlags;		// permission bits
   GBool ownerPasswordOk;	// true if owner password is correct
@@ -122,14 +135,17 @@ private:
   int keyLength;		// length of key, in bytes
   int encVersion;		// encryption version
   CryptAlgorithm encAlgorithm;	// encryption algorithm
+  XRefCacheEntry		// cache of recently accessed objects
+    cache[xrefCacheSize];
 
-  Guint getStartXref();
-  GBool readXRef(Guint *pos);
-  GBool readXRefTable(Parser *parser, Guint *pos);
+  GFileOffset getStartXref();
+  GBool readXRef(GFileOffset *pos, XRefPosSet *posSet);
+  GBool readXRefTable(GFileOffset *pos, int offset, XRefPosSet *posSet);
   GBool readXRefStreamSection(Stream *xrefStr, int *w, int first, int n);
-  GBool readXRefStream(Stream *xrefStr, Guint *pos);
+  GBool readXRefStream(Stream *xrefStr, GFileOffset *pos);
   GBool constructXRef();
-  Guint strToUnsigned(char *s);
+  ObjectStream *getObjectStream(int objStrNum);
+  GFileOffset strToFileOffset(char *s);
 };
 
 #endif

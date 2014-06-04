@@ -25,6 +25,7 @@
 #include "Gfx.h"
 #include "GfxState.h"
 #include "Annot.h"
+#include "Form.h"
 #endif
 #include "Error.h"
 #include "Catalog.h"
@@ -123,6 +124,15 @@ PageAttrs::PageAttrs(PageAttrs *attrs, Dict *dict) {
   dict->lookup("Metadata", &metadata);
   dict->lookup("PieceInfo", &pieceInfo);
   dict->lookup("SeparationInfo", &separationInfo);
+  if (dict->lookup("UserUnit", &obj1)->isNum()) {
+    userUnit = obj1.getNum();
+    if (userUnit < 1) {
+      userUnit = 1;
+    }
+  } else {
+    userUnit = 1;
+  }
+  obj1.free();
 
   // resource dictionary
   dict->lookup("Resources", &obj1);
@@ -312,7 +322,7 @@ void Page::displaySlice(OutputDev *out, double hDPI, double vDPI,
   Gfx *gfx;
   Object obj;
   Annots *annotList;
-  Dict *acroForm;
+  Form *form;
   int i;
 
   if (!out->checkPageSlice(this, hDPI, vDPI, rotate, useMediaBox, crop,
@@ -347,8 +357,10 @@ void Page::displaySlice(OutputDev *out, double hDPI, double vDPI,
   contents.fetch(xref, &obj);
   if (!obj.isNull()) {
     gfx->saveState();
-    gfx->display(&obj);
-    gfx->restoreState();
+    gfx->display(&contents);
+    while (gfx->getState()->hasSaves()) {
+      gfx->restoreState();
+    }
   } else {
     // empty pages need to call dump to do any setup required by the
     // OutputDev
@@ -356,20 +368,11 @@ void Page::displaySlice(OutputDev *out, double hDPI, double vDPI,
   }
   obj.free();
 
-  // draw annotations
+  // draw (non-form) annotations
   if (globalParams->getDrawAnnotations()) {
     annotList = new Annots(doc, getAnnots(&obj));
     obj.free();
-    acroForm = doc->getCatalog()->getAcroForm()->isDict() ?
-               doc->getCatalog()->getAcroForm()->getDict() : NULL;
-    if (acroForm) {
-      if (acroForm->lookup("NeedAppearances", &obj)) {
-	if (obj.isBool() && obj.getBool()) {
-	  annotList->generateAppearances();
-	}
-      }
-      obj.free();
-    }
+    annotList->generateAnnotAppearances();
     if (annotList->getNumAnnots() > 0) {
       if (globalParams->getPrintCommands()) {
 	printf("***** Annotations\n");
@@ -380,6 +383,12 @@ void Page::displaySlice(OutputDev *out, double hDPI, double vDPI,
       out->dump();
     }
     delete annotList;
+  }
+
+  // draw form fields
+  if ((form = doc->getCatalog()->getForm())) {
+    form->draw(num, gfx, printing);
+    out->dump();
   }
 
   delete gfx;
@@ -459,6 +468,7 @@ void Page::processLinks(OutputDev *out) {
   delete links;
 }
 
+#ifndef PDF_PARSER_ONLY
 void Page::getDefaultCTM(double *ctm, double hDPI, double vDPI,
 			 int rotate, GBool useMediaBox, GBool upsideDown) {
   GfxState *state;
@@ -478,3 +488,4 @@ void Page::getDefaultCTM(double *ctm, double hDPI, double vDPI,
   }
   delete state;
 }
+#endif

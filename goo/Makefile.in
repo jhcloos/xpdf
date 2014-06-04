@@ -11,8 +11,8 @@ SHELL = /bin/sh
 srcdir = @srcdir@
 VPATH = @srcdir@
 
-CFLAGS = @CFLAGS@ @DEFS@ -I.. -I$(srcdir)
-CXXFLAGS = @CXXFLAGS@ @DEFS@ -I.. -I$(srcdir)
+CFLAGS = @CFLAGS@ @DEFS@ -I.. -I$(srcdir)/.. -I$(srcdir)
+CXXFLAGS = @CXXFLAGS@ @DEFS@ -I.. -I$(srcdir)/.. -I$(srcdir)
 
 CC = @CC@
 CXX = @CXX@
@@ -68,4 +68,4 @@ depend:
 	$(CXX) $(CXXFLAGS) -MM $(CXX_SRC) >Makefile.dep
 	$(CC) $(CFLAGS) -MM $(C_SRC) >>Makefile.dep
 
-include Makefile.dep
+-include Makefile.dep

@@ -623,11 +623,11 @@ Guint JBIG2MMRDecoder::get24Bits() {
 }
 
 void JBIG2MMRDecoder::skipTo(Guint length) {
-  while (nBytesRead < length) {
-    str->getChar();
-    ++nBytesRead;
-    ++byteCounter;
-  }
+  int n;
+
+  n = str->discardChars(length - nBytesRead);
+  nBytesRead += n;
+  byteCounter += n;
 }
 
 //------------------------------------------------------------------------
@@ -1310,10 +1310,9 @@ void JBIG2Stream::readSegments() {
       }
       refFlags = (refFlags << 24) | (c1 << 16) | (c2 << 8) | c3;
       nRefSegs = refFlags & 0x1fffffff;
-      for (i = 0; i < (nRefSegs + 9) >> 3; ++i) {
-	if ((c1 = curStr->getChar()) == EOF) {
-	  goto eofError1;
-	}
+      i = (nRefSegs + 9) >> 3;
+      if (curStr->discardChars(i) != i) {
+	goto eofError1;
       }
     }
 
@@ -1436,10 +1435,8 @@ void JBIG2Stream::readSegments() {
       break;
     default:
       error(errSyntaxError, getPos(), "Unknown segment type in JBIG2 stream");
-      for (i = 0; i < segLength; ++i) {
-	if ((c1 = curStr->getChar()) == EOF) {
-	  goto eofError2;
-	}
+      if (curStr->discardChars(segLength) != segLength) {
+	goto eofError2;
       }
       break;
     }
@@ -1460,12 +1457,7 @@ void JBIG2Stream::readSegments() {
 	gfree(refSegs);
 	break;
       }
-      while (byteCounter < segLength) {
-	if (curStr->getChar() == EOF) {
-	  break;
-	}
-	++byteCounter;
-      }
+      byteCounter += curStr->discardChars(segLength - byteCounter);
     }
 
     gfree(refSegs);
@@ -1502,9 +1494,8 @@ GBool JBIG2Stream::readSymbolDictSeg(Guint segNum, Guint length,
   Guint symHeight, symWidth, totalWidth, x, symID;
   int dh, dw, refAggNum, refDX, refDY, bmSize;
   GBool ex;
-  int run, cnt, c;
+  int run, cnt;
   Guint i, j, k;
-  Guchar *p;
 
   symWidths = NULL;
 
@@ -1814,14 +1805,8 @@ GBool JBIG2Stream::readSymbolDictSeg(Guint segNum, Guint length,
       if (bmSize == 0) {
 	collBitmap = new JBIG2Bitmap(0, totalWidth, symHeight);
 	bmSize = symHeight * ((totalWidth + 7) >> 3);
-	p = collBitmap->getDataPtr();
-	for (k = 0; k < (Guint)bmSize; ++k) {
-	  if ((c = curStr->getChar()) == EOF) {
-	    break;
-	  }
-	  *p++ = (Guchar)c;
-	  ++byteCounter;
-	}
+	byteCounter += curStr->getBlock((char *)collBitmap->getDataPtr(),
+					bmSize);
       } else {
 	collBitmap = readGenericBitmap(gTrue, totalWidth, symHeight,
 				       0, gFalse, gFalse, NULL, NULL, NULL,
@@ -2781,7 +2766,6 @@ JBIG2Bitmap *JBIG2Stream::readGenericBitmap(GBool mmr, int w, int h,
   Guchar mask;
   int x, y, x0, x1, a0i, b1i, blackPixels, pix, i;
 
-
   bitmap = new JBIG2Bitmap(0, w, h);
   bitmap->clearToZero();
 
@@ -2994,7 +2978,7 @@ JBIG2Bitmap *JBIG2Stream::readGenericBitmap(GBool mmr, int w, int h,
 	ltpCX = 0x0e3; // 001 1100 01 1
 	break;
       case 3:
-	ltpCX = 0x18a; // 01100 0101 1
+	ltpCX = 0x18b; // 01100 0101 1
 	break;
       }
     }
@@ -3821,27 +3805,13 @@ void JBIG2Stream::readPageInfoSeg(Guint length) {
 }
 
 void JBIG2Stream::readEndOfStripeSeg(Guint length) {
-  Guint i;
-
   // skip the segment
-  for (i = 0; i < length; ++i) {
-    if (curStr->getChar() == EOF) {
-      break;
-    }
-    ++byteCounter;
-  }
+  byteCounter += curStr->discardChars(length);
 }
 
 void JBIG2Stream::readProfilesSeg(Guint length) {
-  Guint i;
-
   // skip the segment
-  for (i = 0; i < length; ++i) {
-    if (curStr->getChar() == EOF) {
-      break;
-    }
-    ++byteCounter;
-  }
+  byteCounter += curStr->discardChars(length);
 }
 
 void JBIG2Stream::readCodeTableSeg(Guint segNum, Guint length) {
@@ -3909,15 +3879,8 @@ void JBIG2Stream::readCodeTableSeg(Guint segNum, Guint length) {
 }
 
 void JBIG2Stream::readExtensionSeg(Guint length) {
-  Guint i;
-
   // skip the segment
-  for (i = 0; i < length; ++i) {
-    if (curStr->getChar() == EOF) {
-      break;
-    }
-    ++byteCounter;
-  }
+  byteCounter += curStr->discardChars(length);
 }
 
 JBIG2Segment *JBIG2Stream::findSegment(Guint segNum) {

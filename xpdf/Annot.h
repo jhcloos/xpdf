@@ -38,15 +38,15 @@ public:
 
   AnnotBorderStyle(AnnotBorderType typeA, double widthA,
 		   double *dashA, int dashLengthA,
-		   double rA, double gA, double bA);
+		   double *colorA, int nColorCompsA);
   ~AnnotBorderStyle();
 
   AnnotBorderType getType() { return type; }
   double getWidth() { return width; }
   void getDash(double **dashA, int *dashLengthA)
     { *dashA = dash; *dashLengthA = dashLength; }
-  void getColor(double *rA, double *gA, double *bA)
-    { *rA = r; *gA = g; *bA = b; }
+  int getNumColorComps() { return nColorComps; }
+  double *getColor() { return color; }
 
 private:
 
@@ -54,7 +54,23 @@ private:
   double width;
   double *dash;
   int dashLength;
-  double r, g, b;
+  double color[4];
+  int nColorComps;
+};
+
+//------------------------------------------------------------------------
+
+enum AnnotLineEndType {
+  annotLineEndNone,
+  annotLineEndSquare,
+  annotLineEndCircle,
+  annotLineEndDiamond,
+  annotLineEndOpenArrow,
+  annotLineEndClosedArrow,
+  annotLineEndButt,
+  annotLineEndROpenArrow,
+  annotLineEndRClosedArrow,
+  annotLineEndSlash
 };
 
 //------------------------------------------------------------------------
@@ -85,25 +101,26 @@ public:
   GBool match(Ref *refA)
     { return ref.num == refA->num && ref.gen == refA->gen; }
 
-  void generateFieldAppearance(Dict *field, Dict *annot, Dict *acroForm);
+  void generateAnnotAppearance();
 
 private:
  
-  void setColor(Array *a, GBool fill, int adjust);
-  void drawText(GString *text, GString *da, GfxFontDict *fontDict,
-		GBool multiline, int comb, int quadding,
-		GBool txField, GBool forceZapfDingbats, int rot);
-  void drawListBox(GString **text, GBool *selection,
-		   int nOptions, int topIdx,
-		   GString *da, GfxFontDict *fontDict, GBool quadding);
-  void getNextLine(GString *text, int start,
-		   GfxFont *font, double fontSize, double wMax,
-		   int *end, double *width, int *next);
-  void drawCircle(double cx, double cy, double r, GBool fill);
+  void generateLineAppearance();
+  void generatePolyLineAppearance();
+  void generatePolygonAppearance();
+  void setLineStyle(AnnotBorderStyle *bs, double *lineWidth);
+  void setStrokeColor(double *color, int nComps);
+  GBool setFillColor(Object *colorObj);
+  AnnotLineEndType parseLineEndType(Object *obj);
+  void adjustLineEndpoint(AnnotLineEndType lineEnd,
+			  double x, double y, double dx, double dy,
+			  double w, double *tx, double *ty);
+  void drawLineArrow(AnnotLineEndType lineEnd,
+		     double x, double y, double dx, double dy,
+		     double w, GBool fill);
+  void drawCircle(double cx, double cy, double r, const char *cmd);
   void drawCircleTopLeft(double cx, double cy, double r);
   void drawCircleBottomRight(double cx, double cy, double r);
-  Object *fieldLookup(Dict *field, Dict *acroForm,
-		      const char *key, Object *obj);
 
   PDFDoc *doc;
   XRef *xref;			// the xref table for this PDF file
@@ -137,9 +154,9 @@ public:
   int getNumAnnots() { return nAnnots; }
   Annot *getAnnot(int i) { return annots[i]; }
 
-  // (Re)generate the appearance streams for all annotations belonging
-  // to a form field.
-  void generateAppearances();
+  // Generate an appearance stream for any non-form-field annotation
+  // that is missing it.
+  void generateAnnotAppearances();
 
 private:
 

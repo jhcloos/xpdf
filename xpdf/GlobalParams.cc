@@ -12,15 +12,19 @@
 #pragma implementation
 #endif
 
+#ifdef _WIN32
+#  define _WIN32_WINNT 0x0500 // for GetSystemWindowsDirectory
+#  include <windows.h>
+#endif
 #include <string.h>
 #include <stdio.h>
 #include <ctype.h>
 #ifdef ENABLE_PLUGINS
-#  ifndef WIN32
+#  ifndef _WIN32
 #    include <dlfcn.h>
 #  endif
 #endif
-#ifdef WIN32
+#ifdef _WIN32
 #  include <shlobj.h>
 #endif
 #if HAVE_PAPER_H
@@ -31,6 +35,7 @@
 #include "GList.h"
 #include "GHash.h"
 #include "gfile.h"
+#include "FoFiIdentifier.h"
 #include "Error.h"
 #include "NameToCharCode.h"
 #include "CharCodeToUnicode.h"
@@ -43,8 +48,9 @@
 #endif
 #include "GlobalParams.h"
 
-#ifdef WIN32
+#ifdef _WIN32
 #  define strcasecmp stricmp
+#  define strncasecmp strnicmp
 #endif
 
 #if MULTITHREADED
@@ -68,7 +74,7 @@
 #include "UTF8.h"
 
 #ifdef ENABLE_PLUGINS
-#  ifdef WIN32
+#  ifdef _WIN32
 extern XpdfPluginVecTable xpdfPluginVecTable;
 #  endif
 #endif
@@ -84,25 +90,29 @@ static struct {
   const char *name;
   const char *t1FileName;
   const char *ttFileName;
+  const char *macFileName;	// may be .dfont, .ttf, or .ttc
+  const char *macFontName;	// font name inside .dfont or .ttc
+  const char *obliqueFont;	// name of font to oblique
+  double obliqueFactor;		// oblique sheer factor
 } displayFontTab[] = {
-  {"Courier",               "n022003l.pfb", "cour.ttf"},
-  {"Courier-Bold",          "n022004l.pfb", "courbd.ttf"},
-  {"Courier-BoldOblique",   "n022024l.pfb", "courbi.ttf"},
-  {"Courier-Oblique",       "n022023l.pfb", "couri.ttf"},
-  {"Helvetica",             "n019003l.pfb", "arial.ttf"},
-  {"Helvetica-Bold",        "n019004l.pfb", "arialbd.ttf"},
-  {"Helvetica-BoldOblique", "n019024l.pfb", "arialbi.ttf"},
-  {"Helvetica-Oblique",     "n019023l.pfb", "ariali.ttf"},
-  {"Symbol",                "s050000l.pfb", NULL},
-  {"Times-Bold",            "n021004l.pfb", "timesbd.ttf"},
-  {"Times-BoldItalic",      "n021024l.pfb", "timesbi.ttf"},
-  {"Times-Italic",          "n021023l.pfb", "timesi.ttf"},
-  {"Times-Roman",           "n021003l.pfb", "times.ttf"},
-  {"ZapfDingbats",          "d050000l.pfb", NULL},
+  {"Courier",               "n022003l.pfb", "cour.ttf",    "Courier",      "Courier",                NULL,             0},
+  {"Courier-Bold",          "n022004l.pfb", "courbd.ttf",  "Courier",      "Courier Bold",           NULL,             0},
+  {"Courier-BoldOblique",   "n022024l.pfb", "courbi.ttf",  "Courier",      "Courier Bold Oblique",   "Courier-Bold",   0.212557},
+  {"Courier-Oblique",       "n022023l.pfb", "couri.ttf",   "Courier",      "Courier Oblique",        "Courier",        0.212557},
+  {"Helvetica",             "n019003l.pfb", "arial.ttf",   "Helvetica",    "Helvetica",              NULL,             0},
+  {"Helvetica-Bold",        "n019004l.pfb", "arialbd.ttf", "Helvetica",    "Helvetica-Bold",         NULL,             0},
+  {"Helvetica-BoldOblique", "n019024l.pfb", "arialbi.ttf", "Helvetica",    "Helvetica Bold Oblique", "Helvetica-Bold", 0.212557},
+  {"Helvetica-Oblique",     "n019023l.pfb", "ariali.ttf",  "Helvetica",    "Helvetica Oblique",      "Helvetica",      0.212557},
+  {"Symbol",                "s050000l.pfb", NULL,          "Symbol",       "Symbol",                 NULL,             0},
+  {"Times-Bold",            "n021004l.pfb", "timesbd.ttf", "Times",        "Times-Bold",             NULL,             0},
+  {"Times-BoldItalic",      "n021024l.pfb", "timesbi.ttf", "Times",        "Times-BoldItalic",       NULL,             0},
+  {"Times-Italic",          "n021023l.pfb", "timesi.ttf",  "Times",        "Times-Italic",           NULL,             0},
+  {"Times-Roman",           "n021003l.pfb", "times.ttf",   "Times",        "Times-Roman",            NULL,             0},
+  {"ZapfDingbats",          "d050000l.pfb", NULL,          "ZapfDingbats", "Zapf Dingbats",          NULL,             0},
   {NULL}
 };
 
-#ifdef WIN32
+#ifdef _WIN32
 static const char *displayFontDirs[] = {
   "c:/windows/fonts",
   "c:/winnt/fonts",
@@ -115,9 +125,30 @@ static const char *displayFontDirs[] = {
   "/usr/share/fonts/default/Type1",
   "/usr/share/fonts/default/ghostscript",
   "/usr/share/fonts/type1/gsfonts",
+#if defined(__sun) && defined(__SVR4)
+  "/usr/sfw/share/ghostscript/fonts",
+#endif
   NULL
 };
 #endif
+
+#ifdef __APPLE__
+static const char *macSystemFontPath = "/System/Library/Fonts";
+#endif
+
+struct Base14FontInfo {
+  Base14FontInfo(GString *fileNameA, int fontNumA, double obliqueA) {
+    fileName = fileNameA;
+    fontNum = fontNumA;
+    oblique = obliqueA;
+  }
+  ~Base14FontInfo() {
+    delete fileName;
+  }
+  GString *fileName;
+  int fontNum;
+  double oblique;
+};
 
 //------------------------------------------------------------------------
 
@@ -198,13 +229,13 @@ public:
   ~SysFontList();
   SysFontInfo *find(GString *name);
 
-#ifdef WIN32
+#ifdef _WIN32
   void scanWindowsFonts(char *winFontDir);
 #endif
 
 private:
 
-#ifdef WIN32
+#ifdef _WIN32
   SysFontInfo *makeWindowsFont(char *name, int fontNum,
 			       char *path);
 #endif
@@ -241,40 +272,36 @@ SysFontInfo *SysFontList::find(GString *name) {
   }
   n = name2->getLength();
 
-  // remove trailing "MT" (Foo-MT, Foo-BoldMT, etc.)
-  if (n > 2 && !strcmp(name2->getCString() + n - 2, "MT")) {
-    name2->del(n - 2, 2);
-    n -= 2;
-  }
+  // font names like "Arial-BoldMT,Bold" are occasionally used,
+  // so run this loop twice
+  bold = italic = gFalse;
+  for (i = 0; i < 2; ++i) {
 
-  // look for "Regular"
-  if (n > 7 && !strcmp(name2->getCString() + n - 7, "Regular")) {
-    name2->del(n - 7, 7);
-    n -= 7;
-  }
+    // remove trailing "MT" (Foo-MT, Foo-BoldMT, etc.)
+    if (n > 2 && !strcmp(name2->getCString() + n - 2, "MT")) {
+      name2->del(n - 2, 2);
+      n -= 2;
+    }
 
-  // look for "Italic"
-  if (n > 6 && !strcmp(name2->getCString() + n - 6, "Italic")) {
-    name2->del(n - 6, 6);
-    italic = gTrue;
-    n -= 6;
-  } else {
-    italic = gFalse;
-  }
+    // look for "Regular"
+    if (n > 7 && !strcmp(name2->getCString() + n - 7, "Regular")) {
+      name2->del(n - 7, 7);
+      n -= 7;
+    }
 
-  // look for "Bold"
-  if (n > 4 && !strcmp(name2->getCString() + n - 4, "Bold")) {
-    name2->del(n - 4, 4);
-    bold = gTrue;
-    n -= 4;
-  } else {
-    bold = gFalse;
-  }
+    // look for "Italic"
+    if (n > 6 && !strcmp(name2->getCString() + n - 6, "Italic")) {
+      name2->del(n - 6, 6);
+      italic = gTrue;
+      n -= 6;
+    }
 
-  // remove trailing "MT" (FooMT-Bold, etc.)
-  if (n > 2 && !strcmp(name2->getCString() + n - 2, "MT")) {
-    name2->del(n - 2, 2);
-    n -= 2;
+    // look for "Bold"
+    if (n > 4 && !strcmp(name2->getCString() + n - 4, "Bold")) {
+      name2->del(n - 4, 4);
+      bold = gTrue;
+      n -= 4;
+    }
   }
 
   // remove trailing "PS"
@@ -323,7 +350,7 @@ SysFontInfo *SysFontList::find(GString *name) {
   return fi;
 }
 
-#ifdef WIN32
+#ifdef _WIN32
 void SysFontList::scanWindowsFonts(char *winFontDir) {
   OSVERSIONINFO version;
   char *path;
@@ -341,15 +368,15 @@ void SysFontList::scanWindowsFonts(char *winFontDir) {
   } else {
     path = "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Fonts\\";
   }
-  if (RegOpenKeyEx(HKEY_LOCAL_MACHINE, path, 0,
-		   KEY_QUERY_VALUE | KEY_ENUMERATE_SUB_KEYS,
-		   &regKey) == ERROR_SUCCESS) {
+  if (RegOpenKeyExA(HKEY_LOCAL_MACHINE, path, 0,
+		    KEY_QUERY_VALUE | KEY_ENUMERATE_SUB_KEYS,
+		    &regKey) == ERROR_SUCCESS) {
     idx = 0;
     while (1) {
       valNameLen = sizeof(valName) - 1;
       dataLen = sizeof(data) - 1;
-      if (RegEnumValue(regKey, idx, valName, &valNameLen, NULL,
-		       &type, (LPBYTE)data, &dataLen) != ERROR_SUCCESS) {
+      if (RegEnumValueA(regKey, idx, valName, &valNameLen, NULL,
+			&type, (LPBYTE)data, &dataLen) != ERROR_SUCCESS) {
 	break;
       }
       if (type == REG_SZ &&
@@ -357,7 +384,7 @@ void SysFontList::scanWindowsFonts(char *winFontDir) {
 	  dataLen > 0 && dataLen < sizeof(data)) {
 	valName[valNameLen] = '\0';
 	data[dataLen] = '\0';
-	n = strlen(data);
+	n = (int)strlen(data);
 	if (!strcasecmp(data + n - 4, ".ttf") ||
 	    !strcasecmp(data + n - 4, ".ttc")) {
 	  fontPath = new GString(data);
@@ -398,7 +425,7 @@ SysFontInfo *SysFontList::makeWindowsFont(char *name, int fontNum,
   int i;
   SysFontType type;
 
-  n = strlen(name);
+  n = (int)strlen(name);
   bold = italic = gFalse;
 
   // remove trailing ' (TrueType)'
@@ -419,7 +446,7 @@ SysFontInfo *SysFontList::makeWindowsFont(char *name, int fontNum,
   }
 
   // remove trailing ' Regular'
-  if (n > 5 && !strncmp(name + n - 8, " Regular", 8)) {
+  if (n > 8 && !strncmp(name + n - 8, " Regular", 8)) {
     n -= 8;
   }
 
@@ -490,7 +517,7 @@ public:
 
 private:
 
-#ifdef WIN32
+#ifdef _WIN32
   Plugin(HMODULE libA);
   HMODULE lib;
 #else
@@ -504,7 +531,7 @@ Plugin *Plugin::load(char *type, char *name) {
   Plugin *plugin;
   XpdfPluginVecTable *vt;
   XpdfBool (*xpdfInitPlugin)(void);
-#ifdef WIN32
+#ifdef _WIN32
   HMODULE libA;
 #else
   void *dlA;
@@ -515,9 +542,9 @@ Plugin *Plugin::load(char *type, char *name) {
   appendToPath(path, type);
   appendToPath(path, name);
 
-#ifdef WIN32
+#ifdef _WIN32
   path->append(".dll");
-  if (!(libA = LoadLibrary(path->getCString()))) {
+  if (!(libA = LoadLibraryA(path->getCString()))) {
     error(errIO, -1, "Failed to load plugin '{0:t}'", path);
     goto err1;
   }
@@ -548,7 +575,7 @@ Plugin *Plugin::load(char *type, char *name) {
   }
   memcpy(vt, &xpdfPluginVecTable, sizeof(xpdfPluginVecTable));
 
-#ifdef WIN32
+#ifdef _WIN32
   if (!(xpdfInitPlugin = (XpdfBool (*)(void))
 	                     GetProcAddress(libA, "xpdfInitPlugin"))) {
     error(errIO, -1, "Failed to find xpdfInitPlugin in plugin '{0:t}'",
@@ -568,7 +595,7 @@ Plugin *Plugin::load(char *type, char *name) {
     goto err2;
   }
 
-#ifdef WIN32
+#ifdef _WIN32
   plugin = new Plugin(libA);
 #else
   plugin = new Plugin(dlA);
@@ -578,7 +605,7 @@ Plugin *Plugin::load(char *type, char *name) {
   return plugin;
 
  err2:
-#ifdef WIN32
+#ifdef _WIN32
   FreeLibrary(libA);
 #else
   dlclose(dlA);
@@ -588,7 +615,7 @@ Plugin *Plugin::load(char *type, char *name) {
   return NULL;
 }
 
-#ifdef WIN32
+#ifdef _WIN32
 Plugin::Plugin(HMODULE libA) {
   lib = libA;
 }
@@ -601,7 +628,7 @@ Plugin::Plugin(void *dlA) {
 Plugin::~Plugin() {
   void (*xpdfFreePlugin)(void);
 
-#ifdef WIN32
+#ifdef _WIN32
   if ((xpdfFreePlugin = (void (*)(void))
                             GetProcAddress(lib, "xpdfFreePlugin"))) {
     (*xpdfFreePlugin)();
@@ -621,7 +648,7 @@ Plugin::~Plugin() {
 // parsing
 //------------------------------------------------------------------------
 
-GlobalParams::GlobalParams(char *cfgFileName) {
+GlobalParams::GlobalParams(const char *cfgFileName) {
   UnicodeMap *map;
   GString *fileName;
   FILE *f;
@@ -644,7 +671,7 @@ GlobalParams::GlobalParams(char *cfgFileName) {
     }
   }
 
-#ifdef WIN32
+#ifdef _WIN32
   // baseDir will be set by a call to setBaseDir
   baseDir = new GString();
 #else
@@ -660,6 +687,7 @@ GlobalParams::GlobalParams(char *cfgFileName) {
   fontFiles = new GHash(gTrue);
   fontDirs = new GList();
   ccFontFiles = new GHash(gTrue);
+  base14SysFonts = new GHash(gTrue);
   sysFonts = new SysFontList();
 #if HAVE_PAPER_H
   char *paperName;
@@ -683,6 +711,7 @@ GlobalParams::GlobalParams(char *cfgFileName) {
   psImageableURX = psPaperWidth;
   psImageableURY = psPaperHeight;
   psCrop = gTrue;
+  psUseCropBoxAsPage = gFalse;
   psExpandSmaller = gFalse;
   psShrinkLarger = gTrue;
   psCenter = gTrue;
@@ -700,12 +729,15 @@ GlobalParams::GlobalParams(char *cfgFileName) {
   psPreload = gFalse;
   psOPI = gFalse;
   psASCIIHex = gFalse;
+  psLZW = gTrue;
   psUncompressPreloadedImages = gFalse;
+  psMinLineWidth = 0;
   psRasterResolution = 300;
   psRasterMono = gFalse;
+  psRasterSliceSize = 20000000;
   psAlwaysRasterize = gFalse;
   textEncoding = new GString("Latin1");
-#if defined(WIN32)
+#if defined(_WIN32)
   textEOL = eolDOS;
 #elif defined(MACOS)
   textEOL = eolMac;
@@ -713,10 +745,9 @@ GlobalParams::GlobalParams(char *cfgFileName) {
   textEOL = eolUnix;
 #endif
   textPageBreaks = gTrue;
-  textKeepTinyChars = gFalse;
+  textKeepTinyChars = gTrue;
   initialZoom = new GString("125");
   continuousView = gFalse;
-  enableT1lib = gTrue;
   enableFreeType = gTrue;
   disableFreeTypeHinting = gFalse;
   antialias = gTrue;
@@ -737,6 +768,8 @@ GlobalParams::GlobalParams(char *cfgFileName) {
   movieCommand = NULL;
   mapNumericCharNames = gTrue;
   mapUnknownCharNames = gFalse;
+  mapExtTrueTypeFontsViaUnicode = gTrue;
+  enableXFA = gTrue;
   createDefaultKeyBindings();
   printCommands = gFalse;
   errQuiet = gFalse;
@@ -791,9 +824,9 @@ GlobalParams::GlobalParams(char *cfgFileName) {
     }
   }
   if (!f) {
-#ifdef WIN32
+#ifdef _WIN32
     char buf[512];
-    i = GetModuleFileName(NULL, buf, sizeof(buf));
+    i = GetModuleFileNameA(NULL, buf, sizeof(buf));
     if (i <= 0 || i >= sizeof(buf)) {
       // error or path too long for buffer - just use the current dir
       buf[0] = '\0';
@@ -928,7 +961,7 @@ void GlobalParams::createDefaultKeyBindings() {
   keyBindings->append(new KeyBinding('l', xpdfKeyModCtrl,
 				     xpdfKeyContextAny, "redraw"));
   keyBindings->append(new KeyBinding('w', xpdfKeyModCtrl,
-				     xpdfKeyContextAny, "closeWindow"));
+				     xpdfKeyContextAny, "closeWindowOrQuit"));
   keyBindings->append(new KeyBinding('?', xpdfKeyModNone,
 				     xpdfKeyContextAny, "about"));
   keyBindings->append(new KeyBinding('q', xpdfKeyModNone,
@@ -1017,6 +1050,9 @@ void GlobalParams::parseLine(char *buf, GString *fileName, int line) {
       parsePSImageableArea(tokens, fileName, line);
     } else if (!cmd->cmp("psCrop")) {
       parseYesNo("psCrop", &psCrop, tokens, fileName, line);
+    } else if (!cmd->cmp("psUseCropBoxAsPage")) {
+      parseYesNo("psUseCropBoxAsPage", &psUseCropBoxAsPage,
+		 tokens, fileName, line);
     } else if (!cmd->cmp("psExpandSmaller")) {
       parseYesNo("psExpandSmaller", &psExpandSmaller,
 		 tokens, fileName, line);
@@ -1054,14 +1090,22 @@ void GlobalParams::parseLine(char *buf, GString *fileName, int line) {
       parseYesNo("psOPI", &psOPI, tokens, fileName, line);
     } else if (!cmd->cmp("psASCIIHex")) {
       parseYesNo("psASCIIHex", &psASCIIHex, tokens, fileName, line);
+    } else if (!cmd->cmp("psLZW")) {
+      parseYesNo("psLZW", &psLZW, tokens, fileName, line);
     } else if (!cmd->cmp("psUncompressPreloadedImages")) {
       parseYesNo("psUncompressPreloadedImages", &psUncompressPreloadedImages,
+		 tokens, fileName, line);
+    } else if (!cmd->cmp("psMinLineWidth")) {
+      parseFloat("psMinLineWidth", &psMinLineWidth,
 		 tokens, fileName, line);
     } else if (!cmd->cmp("psRasterResolution")) {
       parseFloat("psRasterResolution", &psRasterResolution,
 		 tokens, fileName, line);
     } else if (!cmd->cmp("psRasterMono")) {
       parseYesNo("psRasterMono", &psRasterMono, tokens, fileName, line);
+    } else if (!cmd->cmp("psRasterSliceSize")) {
+      parseInteger("psRasterSliceSize", &psRasterSliceSize,
+		   tokens, fileName, line);
     } else if (!cmd->cmp("psAlwaysRasterize")) {
       parseYesNo("psAlwaysRasterize", &psAlwaysRasterize,
 		 tokens, fileName, line);
@@ -1079,8 +1123,6 @@ void GlobalParams::parseLine(char *buf, GString *fileName, int line) {
       parseInitialZoom(tokens, fileName, line);
     } else if (!cmd->cmp("continuousView")) {
       parseYesNo("continuousView", &continuousView, tokens, fileName, line);
-    } else if (!cmd->cmp("enableT1lib")) {
-      parseYesNo("enableT1lib", &enableT1lib, tokens, fileName, line);
     } else if (!cmd->cmp("enableFreeType")) {
       parseYesNo("enableFreeType", &enableFreeType, tokens, fileName, line);
     } else if (!cmd->cmp("disableFreeTypeHinting")) {
@@ -1133,6 +1175,12 @@ void GlobalParams::parseLine(char *buf, GString *fileName, int line) {
     } else if (!cmd->cmp("mapUnknownCharNames")) {
       parseYesNo("mapUnknownCharNames", &mapUnknownCharNames,
 		 tokens, fileName, line);
+    } else if (!cmd->cmp("mapExtTrueTypeFontsViaUnicode")) {
+      parseYesNo("mapExtTrueTypeFontsViaUnicode",
+		 &mapExtTrueTypeFontsViaUnicode,
+		 tokens, fileName, line);
+    } else if (!cmd->cmp("enableXFA")) {
+      parseYesNo("enableXFA", &enableXFA, tokens, fileName, line);
     } else if (!cmd->cmp("bind")) {
       parseBind(tokens, fileName, line);
     } else if (!cmd->cmp("unbind")) {
@@ -1148,6 +1196,8 @@ void GlobalParams::parseLine(char *buf, GString *fileName, int line) {
 	  !cmd->cmp("displayNamedCIDFontX") ||
 	  !cmd->cmp("displayCIDFontX")) {
 	error(errConfig, -1, "Xpdf no longer supports X fonts");
+      } else if (!cmd->cmp("enableT1lib")) {
+	error(errConfig, -1, "Xpdf no longer uses t1lib");
       } else if (!cmd->cmp("t1libControl") || !cmd->cmp("freetypeControl")) {
 	error(errConfig, -1,
 	      "The t1libControl and freetypeControl options have been replaced by the enableT1lib, enableFreeType, and antialias options");
@@ -1520,6 +1570,7 @@ void GlobalParams::parseScreenType(GList *tokens, GString *fileName,
   }
 }
 
+
 void GlobalParams::parseBind(GList *tokens, GString *fileName, int line) {
   KeyBinding *binding;
   GList *cmds;
@@ -1836,6 +1887,7 @@ GlobalParams::~GlobalParams() {
   deleteGHash(fontFiles, GString);
   deleteGList(fontDirs, GString);
   deleteGHash(ccFontFiles, GString);
+  deleteGHash(base14SysFonts, Base14FontInfo);
   delete sysFonts;
   if (psFile) {
     delete psFile;
@@ -1886,35 +1938,77 @@ void GlobalParams::setBaseDir(char *dir) {
   baseDir = new GString(dir);
 }
 
-void GlobalParams::setupBaseFonts(char *dir) {
-  GString *fontName;
-  GString *fileName;
-#ifdef WIN32
+#ifdef _WIN32
+static void getWinFontDir(char *winFontDir) {
   HMODULE shell32Lib;
   BOOL (__stdcall *SHGetSpecialFolderPathFunc)(HWND hwndOwner,
-					       LPTSTR lpszPath,
+					       LPSTR lpszPath,
 					       int nFolder,
 					       BOOL fCreate);
-  char winFontDir[MAX_PATH];
-#endif
-  FILE *f;
-  int i, j;
+  char *p;
+  int i;
 
-#ifdef WIN32
   // SHGetSpecialFolderPath isn't available in older versions of
   // shell32.dll (Win95 and WinNT4), so do a dynamic load
   winFontDir[0] = '\0';
-  if ((shell32Lib = LoadLibrary("shell32.dll"))) {
+  if ((shell32Lib = LoadLibraryA("shell32.dll"))) {
     if ((SHGetSpecialFolderPathFunc = 
-	 (BOOL (__stdcall *)(HWND hwndOwner, LPTSTR lpszPath,
+	 (BOOL (__stdcall *)(HWND hwndOwner, LPSTR lpszPath,
 			     int nFolder, BOOL fCreate))
 	 GetProcAddress(shell32Lib, "SHGetSpecialFolderPathA"))) {
       if (!(*SHGetSpecialFolderPathFunc)(NULL, winFontDir,
 					 CSIDL_FONTS, FALSE)) {
 	winFontDir[0] = '\0';
       }
+      // kludge: Terminal Server changes CSIDL_FONTS to something like
+      // "C:\Users\whatever\Windows\Fonts", which doesn't actually
+      // contain any fonts -- kill that, so we hit the fallback code
+      // below.
+      for (p = winFontDir; *p; ++p) {
+	if (!strncasecmp(p, "\\Users\\", 7)) {
+	  winFontDir[0] = '\0';
+	  break;
+	}
+      }
     }
   }
+  // if something went wrong, or we're on a Terminal Server, try using
+  // %SYSTEMROOT%\Fonts
+  if (!winFontDir[0]) {
+    GetSystemWindowsDirectoryA(winFontDir, MAX_PATH - 6);
+    winFontDir[MAX_PATH - 7] = '\0';
+    i = (int)strlen(winFontDir);
+    if (winFontDir[i-1] != '\\') {
+      winFontDir[i++] = '\\';
+    }
+    strcpy(winFontDir + i, "Fonts");
+  }
+}
+#endif
+
+void GlobalParams::setupBaseFonts(char *dir) {
+  GString *fontName;
+  GString *fileName;
+  int fontNum;
+  const char *s;
+  Base14FontInfo *base14;
+#ifdef _WIN32
+  char winFontDir[MAX_PATH];
+#endif
+#ifdef __APPLE__
+  static const char *macFontExts[3] = { "dfont", "ttc", "ttf" };
+  GList *dfontFontNames;
+  GBool found;
+  int k;
+#endif
+  FILE *f;
+  int i, j;
+
+#ifdef _WIN32
+  getWinFontDir(winFontDir);
+#endif
+#ifdef __APPLE__
+  dfontFontNames = NULL;
 #endif
   for (i = 0; displayFontTab[i].name; ++i) {
     if (fontFiles->lookup(displayFontTab[i].name)) {
@@ -1922,6 +2016,7 @@ void GlobalParams::setupBaseFonts(char *dir) {
     }
     fontName = new GString(displayFontTab[i].name);
     fileName = NULL;
+    fontNum = 0;
     if (dir) {
       fileName = appendToPath(new GString(dir), displayFontTab[i].t1FileName);
       if ((f = fopen(fileName->getCString(), "rb"))) {
@@ -1931,7 +2026,7 @@ void GlobalParams::setupBaseFonts(char *dir) {
 	fileName = NULL;
       }
     }
-#ifdef WIN32
+#ifdef _WIN32
     if (!fileName && winFontDir[0] && displayFontTab[i].ttFileName) {
       fileName = appendToPath(new GString(winFontDir),
 			      displayFontTab[i].ttFileName);
@@ -1942,13 +2037,67 @@ void GlobalParams::setupBaseFonts(char *dir) {
 	fileName = NULL;
       }
     }
-    // SHGetSpecialFolderPath(CSIDL_FONTS) doesn't work on Win 2k Server
-    // or Win2003 Server, or with older versions of shell32.dll, so check
-    // the "standard" directories
-    if (displayFontTab[i].ttFileName) {
+#endif
+#ifdef __APPLE__
+    // Check for Mac OS X system fonts.
+    s = displayFontTab[i].macFileName;
+    if (dfontFontNames && i > 0 &&
+	(!s || strcmp(s, displayFontTab[i-1].macFileName))) {
+      deleteGList(dfontFontNames, GString);
+      dfontFontNames = NULL;
+    }
+    if (!fileName && s) {
+      for (j = 0; j < 3; ++j) {
+	fileName = GString::format("{0:s}/{1:s}.{2:s}",
+				   macSystemFontPath, s, macFontExts[j]);
+	if (!(f = fopen(fileName->getCString(), "rb"))) {
+	  delete fileName;
+	  fileName = NULL;
+	} else {
+	  fclose(f);
+	  found = gFalse;
+	  // for .dfont or .ttc, we need to scan the font list
+	  if (j < 2) {
+	    if (!dfontFontNames) {
+	      dfontFontNames =
+	          FoFiIdentifier::getFontList(fileName->getCString());
+	    }
+	    if (dfontFontNames) {
+	      for (k = 0; k < dfontFontNames->getLength(); ++k) {
+		if (!((GString *)dfontFontNames->get(k))
+		                     ->cmp(displayFontTab[i].macFontName)) {
+		  fontNum = k;
+		  found = gTrue;
+		  break;
+		}
+	      }
+	    }
+	  // for .ttf, we just use the font
+	  } else {
+	    found = gTrue;
+	  }
+	  if (!found) {
+	    delete fileName;
+	    fileName = NULL;
+	  }
+	  break;
+	}
+      }
+    }
+#endif // __APPLE__
+    // On Linux, this checks the "standard" ghostscript font
+    // directories.  On Windows, it checks the "standard" system font
+    // directories (because SHGetSpecialFolderPath(CSIDL_FONTS)
+    // doesn't work on Win 2k Server or Win2003 Server, or with older
+    // versions of shell32.dll).
+#ifdef _WIN32
+    s = displayFontTab[i].ttFileName;
+#else
+    s = displayFontTab[i].t1FileName;
+#endif
+    if (!fileName && s) {
       for (j = 0; !fileName && displayFontDirs[j]; ++j) {
-	fileName = appendToPath(new GString(displayFontDirs[j]),
-				displayFontTab[i].ttFileName);
+	fileName = appendToPath(new GString(displayFontDirs[j]), s);
 	if ((f = fopen(fileName->getCString(), "rb"))) {
 	  fclose(f);
 	} else {
@@ -1957,28 +2106,35 @@ void GlobalParams::setupBaseFonts(char *dir) {
 	}
       }
     }
-#else // WIN32
-    for (j = 0; !fileName && displayFontDirs[j]; ++j) {
-      fileName = appendToPath(new GString(displayFontDirs[j]),
-			      displayFontTab[i].t1FileName);
-      if ((f = fopen(fileName->getCString(), "rb"))) {
-	fclose(f);
-      } else {
-	delete fileName;
-	fileName = NULL;
-      }
-    }
-#endif // WIN32
     if (!fileName) {
-      error(errConfig, -1, "No display font for '{0:s}'",
-	    displayFontTab[i].name);
       delete fontName;
       continue;
     }
-    addFontFile(fontName, fileName);
+    base14SysFonts->add(fontName, new Base14FontInfo(fileName, fontNum, 0));
   }
-
-#ifdef WIN32
+#ifdef __APPLE__
+  if (dfontFontNames) {
+    deleteGList(dfontFontNames, GString);
+  }
+#endif
+  for (i = 0; displayFontTab[i].name; ++i) {
+    if (!base14SysFonts->lookup(displayFontTab[i].name) &&
+	!fontFiles->lookup(displayFontTab[i].name)) {
+      if (displayFontTab[i].obliqueFont &&
+	  ((base14 = (Base14FontInfo *)base14SysFonts
+	                 ->lookup(displayFontTab[i].obliqueFont)))) {
+	base14SysFonts->add(
+	        new GString(displayFontTab[i].name),
+		new Base14FontInfo(base14->fileName->copy(),
+				   base14->fontNum,
+				   displayFontTab[i].obliqueFactor));
+      } else {
+	error(errConfig, -1, "No display font for '{0:s}'",
+	      displayFontTab[i].name);
+      }
+    }
+  }
+#ifdef _WIN32
   if (winFontDir[0]) {
     sysFonts->scanWindowsFonts(winFontDir);
   }
@@ -2083,7 +2239,7 @@ FILE *GlobalParams::findToUnicodeFile(GString *name) {
 GString *GlobalParams::findFontFile(GString *fontName) {
   static const char *exts[] = { ".pfa", ".pfb", ".ttf", ".ttc" };
   GString *path, *dir;
-#ifdef WIN32
+#ifdef _WIN32
   GString *fontNameU;
 #endif
   const char *ext;
@@ -2100,7 +2256,7 @@ GString *GlobalParams::findFontFile(GString *fontName) {
     dir = (GString *)fontDirs->get(i);
     for (j = 0; j < (int)(sizeof(exts) / sizeof(exts[0])); ++j) {
       ext = exts[j];
-#ifdef WIN32
+#ifdef _WIN32
       fontNameU = fileNameToUTF8(fontName->getCString());
       path = appendToPath(dir->copy(), fontNameU->getCString());
       delete fontNameU;
@@ -2118,6 +2274,25 @@ GString *GlobalParams::findFontFile(GString *fontName) {
   }
   unlockGlobalParams;
   return NULL;
+}
+
+GString *GlobalParams::findBase14FontFile(GString *fontName, int *fontNum,
+					  double *oblique) {
+  Base14FontInfo *fi;
+  GString *path;
+
+  lockGlobalParams;
+  if ((fi = (Base14FontInfo *)base14SysFonts->lookup(fontName))) {
+    path = fi->fileName->copy();
+    *fontNum = fi->fontNum;
+    *oblique = fi->oblique;
+    unlockGlobalParams;
+    return path;
+  }
+  unlockGlobalParams;
+  *fontNum = 0;
+  *oblique = 0;
+  return findFontFile(fontName);
 }
 
 GString *GlobalParams::findSystemFontFile(GString *fontName,
@@ -2193,6 +2368,15 @@ GBool GlobalParams::getPSCrop() {
   return f;
 }
 
+GBool GlobalParams::getPSUseCropBoxAsPage() {
+  GBool f;
+
+  lockGlobalParams;
+  f = psUseCropBoxAsPage;
+  unlockGlobalParams;
+  return f;
+}
+
 GBool GlobalParams::getPSExpandSmaller() {
   GBool f;
 
@@ -2242,7 +2426,9 @@ GString *GlobalParams::getPSResidentFont(GString *fontName) {
   GString *psName;
 
   lockGlobalParams;
-  psName = (GString *)psResidentFonts->lookup(fontName);
+  if ((psName = (GString *)psResidentFonts->lookup(fontName))) {
+    psName = psName->copy();
+  }
   unlockGlobalParams;
   return psName;
 }
@@ -2371,6 +2557,15 @@ GBool GlobalParams::getPSASCIIHex() {
   return ah;
 }
 
+GBool GlobalParams::getPSLZW() {
+  GBool ah;
+
+  lockGlobalParams;
+  ah = psLZW;
+  unlockGlobalParams;
+  return ah;
+}
+
 GBool GlobalParams::getPSUncompressPreloadedImages() {
   GBool ah;
 
@@ -2378,6 +2573,15 @@ GBool GlobalParams::getPSUncompressPreloadedImages() {
   ah = psUncompressPreloadedImages;
   unlockGlobalParams;
   return ah;
+}
+
+double GlobalParams::getPSMinLineWidth() {
+  double w;
+
+  lockGlobalParams;
+  w = psMinLineWidth;
+  unlockGlobalParams;
+  return w;
 }
 
 double GlobalParams::getPSRasterResolution() {
@@ -2396,6 +2600,15 @@ GBool GlobalParams::getPSRasterMono() {
   mono = psRasterMono;
   unlockGlobalParams;
   return mono;
+}
+
+int GlobalParams::getPSRasterSliceSize() {
+  int slice;
+
+  lockGlobalParams;
+  slice = psRasterSliceSize;
+  unlockGlobalParams;
+  return slice;
 }
 
 GBool GlobalParams::getPSAlwaysRasterize() {
@@ -2457,15 +2670,6 @@ GBool GlobalParams::getContinuousView() {
 
   lockGlobalParams;
   f = continuousView;
-  unlockGlobalParams;
-  return f;
-}
-
-GBool GlobalParams::getEnableT1lib() {
-  GBool f;
-
-  lockGlobalParams;
-  f = enableT1lib;
   unlockGlobalParams;
   return f;
 }
@@ -2597,6 +2801,7 @@ GBool GlobalParams::getDrawAnnotations() {
   return draw;
 }
 
+
 GBool GlobalParams::getMapNumericCharNames() {
   GBool map;
 
@@ -2613,6 +2818,24 @@ GBool GlobalParams::getMapUnknownCharNames() {
   map = mapUnknownCharNames;
   unlockGlobalParams;
   return map;
+}
+
+GBool GlobalParams::getMapExtTrueTypeFontsViaUnicode() {
+  GBool map;
+
+  lockGlobalParams;
+  map = mapExtTrueTypeFontsViaUnicode;
+  unlockGlobalParams;
+  return map;
+}
+
+GBool GlobalParams::getEnableXFA() {
+  GBool enable;
+
+  lockGlobalParams;
+  enable = enableXFA;
+  unlockGlobalParams;
+  return enable;
 }
 
 GList *GlobalParams::getKeyBinding(int code, int mods, int context) {
@@ -2804,6 +3027,12 @@ void GlobalParams::setPSCrop(GBool crop) {
   unlockGlobalParams;
 }
 
+void GlobalParams::setPSUseCropBoxAsPage(GBool crop) {
+  lockGlobalParams;
+  psUseCropBoxAsPage = crop;
+  unlockGlobalParams;
+}
+
 void GlobalParams::setPSExpandSmaller(GBool expand) {
   lockGlobalParams;
   psExpandSmaller = expand;
@@ -2882,7 +3111,7 @@ void GlobalParams::setPSASCIIHex(GBool hex) {
   unlockGlobalParams;
 }
 
-void GlobalParams::setTextEncoding(char *encodingName) {
+void GlobalParams::setTextEncoding(const char *encodingName) {
   lockGlobalParams;
   delete textEncoding;
   textEncoding = new GString(encodingName);
@@ -2928,15 +3157,6 @@ void GlobalParams::setContinuousView(GBool cont) {
   lockGlobalParams;
   continuousView = cont;
   unlockGlobalParams;
-}
-
-GBool GlobalParams::setEnableT1lib(char *s) {
-  GBool ok;
-
-  lockGlobalParams;
-  ok = parseYesNo2(s, &enableT1lib);
-  unlockGlobalParams;
-  return ok;
 }
 
 GBool GlobalParams::setEnableFreeType(char *s) {
@@ -3012,6 +3232,18 @@ void GlobalParams::setMapNumericCharNames(GBool map) {
 void GlobalParams::setMapUnknownCharNames(GBool map) {
   lockGlobalParams;
   mapUnknownCharNames = map;
+  unlockGlobalParams;
+}
+
+void GlobalParams::setMapExtTrueTypeFontsViaUnicode(GBool map) {
+  lockGlobalParams;
+  mapExtTrueTypeFontsViaUnicode = map;
+  unlockGlobalParams;
+}
+
+void GlobalParams::setEnableXFA(GBool enable) {
+  lockGlobalParams;
+  enableXFA = enable;
   unlockGlobalParams;
 }
 

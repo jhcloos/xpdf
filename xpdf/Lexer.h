@@ -53,13 +53,12 @@ public:
   Stream *getStream()
     { return curStr.isNone() ? (Stream *)NULL : curStr.getStream(); }
 
-  // Get current position in file.  This is only used for error
-  // messages, so it returns an int instead of a Guint.
-  int getPos()
-    { return curStr.isNone() ? -1 : (int)curStr.streamGetPos(); }
+  // Get current position in file.
+  GFileOffset getPos()
+    { return curStr.isNone() ? -1 : curStr.streamGetPos(); }
 
   // Set position in file.
-  void setPos(Guint pos, int dir = 0)
+  void setPos(GFileOffset pos, int dir = 0)
     { if (!curStr.isNone()) curStr.streamSetPos(pos, dir); }
 
   // Returns true if <c> is a whitespace character.

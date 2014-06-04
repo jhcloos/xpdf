@@ -2,6 +2,8 @@
 //
 // SplashBitmap.h
 //
+// Copyright 2003-2013 Glyph & Cog, LLC
+//
 //========================================================================
 
 #ifndef SPLASHBITMAP_H

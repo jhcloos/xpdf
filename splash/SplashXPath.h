@@ -2,6 +2,8 @@
 //
 // SplashXPath.h
 //
+// Copyright 2003-2013 Glyph & Cog, LLC
+//
 //========================================================================
 
 #ifndef SPLASHXPATH_H
@@ -16,7 +18,8 @@
 #include "SplashTypes.h"
 
 class SplashPath;
-struct SplashXPathAdjust;
+struct SplashXPathPoint;
+struct SplashPathHint;
 
 //------------------------------------------------------------------------
 
@@ -27,18 +30,44 @@ struct SplashXPathAdjust;
 //------------------------------------------------------------------------
 
 struct SplashXPathSeg {
-  SplashCoord x0, y0;		// first endpoint
+  SplashCoord x0, y0;		// first endpoint (y0 <= y1)
   SplashCoord x1, y1;		// second endpoint
   SplashCoord dxdy;		// slope: delta-x / delta-y
   SplashCoord dydx;		// slope: delta-y / delta-x
-  Guint flags;
-};
+  int count;			// EO/NZWN counter increment
 
-#define splashXPathHoriz   0x01 // segment is vertical (y0 == y1)
-				//   (dxdy is undef)
-#define splashXPathVert    0x02 // segment is horizontal (x0 == x1)
-				//   (dydx is undef)
-#define splashXPathFlip	   0x04	// y0 > y1
+  //----- used by SplashXPathScanner
+  SplashCoord xCur0, xCur1;	// current x values
+
+#if HAVE_STD_SORT
+  static bool cmpY(const SplashXPathSeg &seg0,
+		   const SplashXPathSeg &seg1) {
+    return seg0.y0 < seg1.y0;
+  }
+#else
+  static int cmpY(const void *seg0, const void *seg1) {
+    SplashCoord cmp;
+
+    cmp = ((SplashXPathSeg *)seg0)->y0
+          - ((SplashXPathSeg *)seg1)->y0;
+    return (cmp > 0) ? 1 : (cmp < 0) ? -1 : 0;
+  }
+#endif
+
+  static int cmpX(SplashXPathSeg *seg0, SplashXPathSeg *seg1) {
+    SplashCoord cmp;
+
+    if ((cmp = seg0->xCur0 - seg1->xCur0) == 0) {
+      cmp = seg0->dxdy - seg1->dxdy;
+    }
+    return (cmp > 0) ? 1 : (cmp < 0) ? -1 : 0;
+  }
+
+  static int cmpXi(const void *p0, const void *p1) {
+    return cmpX(*(SplashXPathSeg **)p0, *(SplashXPathSeg **)p1);
+  }
+
+};
 
 //------------------------------------------------------------------------
 // SplashXPath
@@ -59,20 +88,18 @@ public:
 
   ~SplashXPath();
 
-  // Multiply all coordinates by splashAASize, in preparation for
-  // anti-aliased rendering.
-  void aaScale();
-
-  // Sort by upper coordinate (lower y), in y-major order.
-  void sort();
+  int getXMin() { return xMin; }
+  int getXMax() { return xMax; }
+  int getYMin() { return yMin; }
+  int getYMax() { return yMax; }
 
 private:
 
   SplashXPath(SplashXPath *xPath);
   void transform(SplashCoord *matrix, SplashCoord xi, SplashCoord yi,
 		 SplashCoord *xo, SplashCoord *yo);
-  void strokeAdjust(SplashXPathAdjust *adjust,
-		    SplashCoord *xp, SplashCoord *yp);
+  void strokeAdjust(SplashXPathPoint *pts,
+		    SplashPathHint *hints, int nHints);
   void grow(int nSegs);
   void addCurve(SplashCoord x0, SplashCoord y0,
 		SplashCoord x1, SplashCoord y1,
@@ -85,6 +112,8 @@ private:
 
   SplashXPathSeg *segs;
   int length, size;		// length and size of segs array
+  int xMin, xMax;
+  int yMin, yMax;
 
   friend class SplashXPathScanner;
   friend class SplashClip;

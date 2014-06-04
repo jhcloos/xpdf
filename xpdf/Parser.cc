@@ -153,7 +153,7 @@ Stream *Parser::makeStream(Object *dict, Guchar *fileKey,
   Object obj;
   BaseStream *baseStr;
   Stream *str;
-  Guint pos, endPos, length;
+  GFileOffset pos, endPos, length;
 
   // get stream start position
   lexer->skipToNextLine();
@@ -162,20 +162,21 @@ Stream *Parser::makeStream(Object *dict, Guchar *fileKey,
   }
   pos = str->getPos();
 
-  // get length
-  dict->dictLookup("Length", &obj, recursion);
-  if (obj.isInt()) {
-    length = (Guint)obj.getInt();
-    obj.free();
-  } else {
-    error(errSyntaxError, getPos(), "Bad 'Length' attribute in stream");
-    obj.free();
-    return NULL;
-  }
-
   // check for length in damaged file
   if (xref && xref->getStreamEnd(pos, &endPos)) {
     length = endPos - pos;
+
+  // get length from the stream object
+  } else {
+    dict->dictLookup("Length", &obj, recursion);
+    if (obj.isInt()) {
+      length = (GFileOffset)(Guint)obj.getInt();
+      obj.free();
+    } else {
+      error(errSyntaxError, getPos(), "Bad 'Length' attribute in stream");
+      obj.free();
+      return NULL;
+    }
   }
 
   // in badly damaged PDF files, we can run off the end of the input
@@ -210,7 +211,7 @@ Stream *Parser::makeStream(Object *dict, Guchar *fileKey,
   }
 
   // get filters
-  str = str->addFilters(dict);
+  str = str->addFilters(dict, recursion);
 
   return str;
 }

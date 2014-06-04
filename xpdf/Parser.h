@@ -42,7 +42,7 @@ public:
   Stream *getStream() { return lexer->getStream(); }
 
   // Get current position in file.
-  int getPos() { return lexer->getPos(); }
+  GFileOffset getPos() { return lexer->getPos(); }
 
 private:
 

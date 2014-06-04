@@ -1,7 +1,7 @@
-.\" Copyright 2002-2011 Glyph & Cog, LLC
-.TH xpdfrc 5 "15 August 2011"
+.\" Copyright 2002-2014 Glyph & Cog, LLC
+.TH xpdfrc 5 "28 May 2014"
 .SH NAME
-xpdfrc \- configuration file for Xpdf tools (version 3.03)
+xpdfrc \- configuration file for Xpdf tools (version 3.04)
 .SH DESCRIPTION
 All of the Xpdf tools read a single configuration file.  If you have a
 .I .xpdfrc
@@ -16,6 +16,9 @@ file should be placed in the same directory as the executables.
 The xpdfrc file consists of a series of configuration options, one
 per line.  Blank lines and lines starting with a \'#' (comments) are
 ignored.
+.PP
+Arguments may be quoted, using "double-quote" characters, e.g., for
+file names that contain spaces.
 .PP
 The following sections list all of the configuration options, sorted
 into functional groups.  There is an examples section at the end.
@@ -259,6 +262,10 @@ If set to "yes", PostScript output is cropped to the CropBox specified
 in the PDF file; otherwise no cropping is done.  This defaults to
 "yes".
 .TP
+.BR psUseCropBoxAsPage " yes | no"
+If set to "yes", PostScript output treats the CropBox as the page size.
+By default, this is "no", and the MediaBox is used as the page size.
+.TP
 .BR psExpandSmaller " yes | no"
 If set to "yes", PDF pages smaller than the PostScript imageable area
 are expanded to fill the imageable area.  Otherwise, no scalling is
@@ -299,11 +306,22 @@ the Xpdf tools were compiled with OPI support.  This defaults to "no".
 If set to "yes", the ASCIIHexEncode filter will be used instead of
 ASCII85Encode for binary data.  This defaults to "no".
 .TP
+.BR psLZW " yes | no"
+If set to "yes", the LZWEncode filter will be used for lossless
+compression in PostScript output; if set to "no", the RunLengthEncode
+filter will be used instead.  LZW generates better compression
+(smaller PS files), but may not be supported by some printers.  This
+defaults to "yes".
+.TP
 .BR psUncompressPreloadedImages " yes | no"
 If set to "yes", all preloaded images in PS files will uncompressed.
 If set to "no", the original compressed images will be used when
 possible.  The "yes" setting is useful to work around certain buggy
 PostScript interpreters.  This defaults to "no".
+.TP
+.BR psMinLineWidth " float"
+Set the minimum line width, in points, for PostScript output.  The
+default value is 0 (no minimum).
 .TP
 .BR psRasterResolution " float"
 Set the resolution (in dpi) for rasterized pages in PostScript output.
@@ -313,6 +331,11 @@ to 300.
 .BR psRasterMono " yes | no"
 If set to "yes", rasterized pages in PS files will be monochrome
 (8-bit gray) instead of color.  This defaults to "no".
+.TP
+.BR psRasterSliceSize " pixels"
+When rasterizing pages, pdftops splits the page into horizontal
+"slices", to limit memory usage.  This option sets the maximum slice
+size, in pixels.  This defaults to 20000000 (20 million).
 .TP
 .BR psAlwaysRasterize " yes | no"
 If set to "yes", all PostScript output will be rasterized.  This
@@ -359,7 +382,7 @@ If set to "yes", text extraction will keep all characters.  If set to
 "no", text extraction will discard tiny (smaller than 3 point)
 characters after the first 50000 per page, avoiding extremely slow run
 times for PDF files that use special fonts to do shading or
-cross-hatching.  This defaults to "no".
+cross-hatching.  This defaults to "yes".
 .SH MISCELLANEOUS SETTINGS
 .TP
 .BR initialZoom " \fIpercentage\fR | page | width"
@@ -372,12 +395,6 @@ width.
 If set to "yes", xpdf will start in continuous view mode, i.e., with
 one vertical screoll bar for the whole document.  This defaults to
 "no".
-.TP
-.BR enableT1lib " yes | no"
-Enables or disables use of t1lib (a Type 1 font rasterizer).  This is
-only relevant if the Xpdf tools were built with t1lib support.
-("enableT1lib" replaces the old "t1libControl" option.)  This option
-defaults to "yes".
 .TP
 .BR enableFreeType " yes | no"
 Enables or disables use of FreeType (a TrueType / Type 1 font
@@ -498,6 +515,21 @@ character code) for all unrecognized glyph names.  (For CID fonts,
 setting mapNumericCharNames to "no" is unnecessary.)  In some cases,
 this leads to usable text, and in other cases it leads to gibberish --
 there is no way for Xpdf to tell.  This defaults to "no".
+.TP
+.BI mapExtTrueTypeFontsViaUnicode " yes | no"
+When rasterizing text using an external TrueType font, there are two
+options for handling character codes.  If
+mapExtTrueTypeFontsViaUnicode is set to "yes", Xpdf will use the font
+encoding/ToUnicode info to map character codes to Unicode, and then
+use the font's Unicode cmap to map Unicode to GIDs.  If
+mapExtTrueTypeFontsViaUnicode is set to "no", Xpdf will assume the
+character codes are GIDs (i.e., use an identity mapping).  This
+defaults to "yes".
+.TP
+.BI enableXFA " yes | no"
+If set to "yes", an XFA form (if present) will be rendered in place of
+an AcroForm.  If "no", an XFA form will never be rendered.  This
+defaults to "yes".
 .TP
 .BI bind " modifiers-key context command ..."
 Add a key or mouse button binding.
@@ -633,7 +665,6 @@ textEncoding UTF-8
 textEOL      unix
 
 # misc options
-enableT1lib     yes
 enableFreeType  yes
 launchCommand   viewer-script
 urlCommand      "netscape \-remote 'openURL(%s)'"
@@ -649,16 +680,18 @@ Depending on build options, it may be placed elsewhere.
 This is the user's configuration file.  If it exists, it will be read
 in place of the system-wide file.
 .SH AUTHOR
-The Xpdf software and documentation are copyright 1996-2011 Glyph &
+The Xpdf software and documentation are copyright 1996-2014 Glyph &
 Cog, LLC.
 .SH "SEE ALSO"
 .BR xpdf (1),
 .BR pdftops (1),
 .BR pdftotext (1),
+.BR pdftohtml (1),
 .BR pdfinfo (1),
 .BR pdffonts (1),
 .BR pdfdetach (1),
 .BR pdftoppm (1),
+.BR pdftopng (1),
 .BR pdfimages (1)
 .br
 .B http://www.foolabs.com/xpdf/

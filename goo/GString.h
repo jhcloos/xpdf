@@ -129,23 +129,23 @@ private:
 #ifdef LLONG_MAX
   static void formatInt(long long x, char *buf, int bufSize,
 			GBool zeroFill, int width, int base,
-			char **p, int *len);
+			const char **p, int *len);
 #else
   static void formatInt(long x, char *buf, int bufSize,
 			GBool zeroFill, int width, int base,
-			char **p, int *len);
+			const char **p, int *len);
 #endif
 #ifdef ULLONG_MAX
   static void formatUInt(unsigned long long x, char *buf, int bufSize,
 			 GBool zeroFill, int width, int base,
-			 char **p, int *len);
+			 const char **p, int *len);
 #else
   static void formatUInt(Gulong x, char *buf, int bufSize,
 			 GBool zeroFill, int width, int base,
-			 char **p, int *len);
+			 const char **p, int *len);
 #endif
   static void formatDouble(double x, char *buf, int bufSize, int prec,
-			   GBool trim, char **p, int *len);
+			   GBool trim, const char **p, int *len);
 };
 
 #endif

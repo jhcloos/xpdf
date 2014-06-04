@@ -1,5 +1,5 @@
 set CC=gcc
-set CFLAGS=-g -O2 -I.. -I..\fofi -I..\goo
+set CFLAGS=-g -O2 -I.. -I..\splash -I..\fofi -I..\goo
 set CXX=gpp
 set CXXFLAGS=%CFLAGS%
 set LIBPROG=ar
@@ -28,6 +28,7 @@ cd ..\fofi
 
 cd ..\xpdf
 del *.o
+%CXX% %CXXFLAGS% -c AcroForm.cc
 %CXX% %CXXFLAGS% -c Annot.cc
 %CXX% %CXXFLAGS% -c Array.cc
 %CXX% %CXXFLAGS% -c BuiltinFont.cc
@@ -39,6 +40,7 @@ del *.o
 %CXX% %CXXFLAGS% -c Dict.cc
 %CXX% %CXXFLAGS% -c Error.cc
 %CXX% %CXXFLAGS% -c FontEncodingTables.cc
+%CXX% %CXXFLAGS% -c Form.cc
 %CXX% %CXXFLAGS% -c Function.cc
 %CXX% %CXXFLAGS% -c Gfx.cc
 %CXX% %CXXFLAGS% -c GfxFont.cc
@@ -61,12 +63,16 @@ del *.o
 %CXX% %CXXFLAGS% -c PSTokenizer.cc
 %CXX% %CXXFLAGS% -c Page.cc
 %CXX% %CXXFLAGS% -c Parser.cc
+%CXX% %CXXFLAGS% -c PreScanOutputDev.cc
 %CXX% %CXXFLAGS% -c SecurityHandler.cc
 %CXX% %CXXFLAGS% -c Stream.cc
 %CXX% %CXXFLAGS% -c TextOutputDev.cc
+%CXX% %CXXFLAGS% -c TextString.cc
 %CXX% %CXXFLAGS% -c UnicodeMap.cc
 %CXX% %CXXFLAGS% -c UnicodeTypeTable.cc
+%CXX% %CXXFLAGS% -c XFAForm.cc
 %CXX% %CXXFLAGS% -c XRef.cc
+%CXX% %CXXFLAGS% -c Zoox.cc
 del libxpdf.a
 %LIBPROG% -rc libxpdf.a *.o
 

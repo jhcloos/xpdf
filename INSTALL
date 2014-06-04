@@ -1,11 +1,11 @@
 Xpdf
 ====
 
-version 3.03
-2011-aug-15
+version 3.04
+2014-may-28
 
 The Xpdf software and documentation are
-copyright 1996-2011 Glyph & Cog, LLC.
+copyright 1996-2014 Glyph & Cog, LLC.
 
 Email: derekn@foolabs.com
 WWW: http://www.foolabs.com/xpdf/
@@ -35,12 +35,6 @@ different systems.
 
     --with-freetype2-library=PATH
     --with-freetype2-includes=PATH
-
-  (The include path is the directory which contains the freetype2
-  directory, i.e., do NOT include "freetype2" in the
-  --with-freetype2-includes path.  For example, with the default
-  installation, the library path is /usr/local/lib and the include
-  path is /usr/local/include/freetype2.)
 
 * If you have Motif (or Lesstif) installed in a non-standard place,
   you can use the following options to tell configure where to find
@@ -112,35 +106,6 @@ If you want to run a quick test, there is a tiny PDF file included
 with xpdf, as misc/hello.pdf .
 
 
-*************
-***  VMS  ***
-*************
-
-* The 'stddef.h' include file which comes with older versions of gcc
-  may be missing a definition for wchar_t.  In this case, add the
-  following lines:
-  -----
-  File GNU_CC:[INCLUDE]STDDEF.H;2
-   44   /* Wide characters, not yet supported by VAXCRTL [match VAXC's <stddef.
-   45   #if !defined(_WCHAR_T) && !defined(_WCHAR_T_)
-   46   typedef unsigned int wchar_t;
-   47   #endif
-   48   #define _WCHAR_T
-   49   #define _WCHAR_T_
-   50
-  -----
-
-* Read the instructions at the top of vms_make.com.
-
-* Type '@vms_make' in the top-level directory.  You'll probably want
-  to use some of the options described in the file.
-
-* The executables will be left in '[.xpdf]'.
-
-If you want to run a quick test, there is a tiny PDF file included
-with xpdf, as misc/hello.pdf .
-
-
 **************
 ***  OS/2  ***
 **************
@@ -176,8 +141,7 @@ port (thanks to Michael A. Richmond for these instructions):
 
   * to build xpdf:
     - cd xpdf-x.yy
-    - ./configure --with-t1-library=/usr/local/lib
-        --with-t1-includes=/usr/local/include
+    - ./configure
         --with-freetype2-library=/usr/lib
         --with-freetype2-includes=/usr/include/freetype2
         --with-Xm-library=/usr/lib

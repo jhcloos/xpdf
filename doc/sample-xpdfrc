@@ -79,9 +79,8 @@
 
 #----- misc settings
 
-# Enable t1lib, FreeType, and anti-aliased text.
+# Enable FreeType, and anti-aliased text.
 
-#enableT1lib		yes
 #enableFreeType		yes
 #antialias		yes
 

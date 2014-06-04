@@ -387,24 +387,42 @@ void FoFiType1C::convertToType1(char *psName, const char **newEncoding,
     delete buf;
   }
   if (privateDicts[0].nStemSnapH) {
-    eexecWrite(&eb, "/StemSnapH [");
-    for (i = 0; i < privateDicts[0].nStemSnapH; ++i) {
-      buf = GString::format("{0:s}{1:.4g}",
-			    i > 0 ? " " : "", privateDicts[0].stemSnapH[i]);
-      eexecWrite(&eb, buf->getCString());
-      delete buf;
+    // the StemSnapH array should be unique values in ascending order --
+    // if not, just skip it
+    for (i = 1; i < privateDicts[0].nStemSnapH; ++i) {
+      if (privateDicts[0].stemSnapH[i-1] >= privateDicts[0].stemSnapH[i]) {
+	break;
+      }
     }
-    eexecWrite(&eb, "] def\n");
+    if (i == privateDicts[0].nStemSnapH) {
+      eexecWrite(&eb, "/StemSnapH [");
+      for (i = 0; i < privateDicts[0].nStemSnapH; ++i) {
+	buf = GString::format("{0:s}{1:.4g}",
+			      i > 0 ? " " : "", privateDicts[0].stemSnapH[i]);
+	eexecWrite(&eb, buf->getCString());
+	delete buf;
+      }
+      eexecWrite(&eb, "] def\n");
+    }
   }
   if (privateDicts[0].nStemSnapV) {
-    eexecWrite(&eb, "/StemSnapV [");
-    for (i = 0; i < privateDicts[0].nStemSnapV; ++i) {
-      buf = GString::format("{0:s}{1:.4g}",
-			    i > 0 ? " " : "", privateDicts[0].stemSnapV[i]);
-      eexecWrite(&eb, buf->getCString());
-      delete buf;
+    // the StemSnapV array should be unique values in ascending order --
+    // if not, just skip it
+    for (i = 1; i < privateDicts[0].nStemSnapV; ++i) {
+      if (privateDicts[0].stemSnapV[i-1] >= privateDicts[0].stemSnapV[i]) {
+	break;
+      }
     }
-    eexecWrite(&eb, "] def\n");
+    if (i == privateDicts[0].nStemSnapV) {
+      eexecWrite(&eb, "/StemSnapV [");
+      for (i = 0; i < privateDicts[0].nStemSnapV; ++i) {
+	buf = GString::format("{0:s}{1:.4g}",
+			      i > 0 ? " " : "", privateDicts[0].stemSnapV[i]);
+	eexecWrite(&eb, buf->getCString());
+	delete buf;
+      }
+      eexecWrite(&eb, "] def\n");
+    }
   }
   if (privateDicts[0].hasForceBold) {
     buf = GString::format("/ForceBold {0:s} def\n",
@@ -719,24 +737,42 @@ void FoFiType1C::convertToCIDType0(char *psName, int *codeMap, int nCodes,
       delete buf;
     }
     if (privateDicts[i].nStemSnapH) {
-      (*outputFunc)(outputStream, "/StemSnapH [", 12);
-      for (j = 0; j < privateDicts[i].nStemSnapH; ++j) {
-	buf = GString::format("{0:s}{1:.4g}",
-			      j > 0 ? " " : "", privateDicts[i].stemSnapH[j]);
-	(*outputFunc)(outputStream, buf->getCString(), buf->getLength());
-	delete buf;
+      // the StemSnapH array should be unique values in ascending order --
+      // if not, just skip it
+      for (j = 1; j < privateDicts[i].nStemSnapH; ++j) {
+	if (privateDicts[i].stemSnapH[j-1] >= privateDicts[i].stemSnapH[j]) {
+	  break;
+	}
       }
-      (*outputFunc)(outputStream, "] def\n", 6);
+      if (j == privateDicts[0].nStemSnapH) {
+	(*outputFunc)(outputStream, "/StemSnapH [", 12);
+	for (j = 0; j < privateDicts[i].nStemSnapH; ++j) {
+	  buf = GString::format("{0:s}{1:.4g}",
+				j > 0 ? " " : "", privateDicts[i].stemSnapH[j]);
+	  (*outputFunc)(outputStream, buf->getCString(), buf->getLength());
+	  delete buf;
+	}
+	(*outputFunc)(outputStream, "] def\n", 6);
+      }
     }
     if (privateDicts[i].nStemSnapV) {
-      (*outputFunc)(outputStream, "/StemSnapV [", 12);
-      for (j = 0; j < privateDicts[i].nStemSnapV; ++j) {
-	buf = GString::format("{0:s}{1:.4g}",
-			      j > 0 ? " " : "", privateDicts[i].stemSnapV[j]);
-	(*outputFunc)(outputStream, buf->getCString(), buf->getLength());
-	delete buf;
+      // the StemSnapV array should be unique values in ascending order --
+      // if not, just skip it
+      for (j = 1; j < privateDicts[i].nStemSnapV; ++j) {
+	if (privateDicts[i].stemSnapV[j-1] >= privateDicts[i].stemSnapV[j]) {
+	  break;
+	}
       }
-      (*outputFunc)(outputStream, "] def\n", 6);
+      if (j == privateDicts[0].nStemSnapV) {
+	(*outputFunc)(outputStream, "/StemSnapV [", 12);
+	for (j = 0; j < privateDicts[i].nStemSnapV; ++j) {
+	  buf = GString::format("{0:s}{1:.4g}",
+				j > 0 ? " " : "", privateDicts[i].stemSnapV[j]);
+	  (*outputFunc)(outputStream, buf->getCString(), buf->getLength());
+	  delete buf;
+	}
+	(*outputFunc)(outputStream, "] def\n", 6);
+      }
     }
     if (privateDicts[i].hasForceBold) {
       buf = GString::format("/ForceBold {0:s} def\n",
@@ -1017,24 +1053,44 @@ void FoFiType1C::convertToType0(char *psName, int *codeMap, int nCodes,
       delete buf;
     }
     if (privateDicts[fd].nStemSnapH) {
-      eexecWrite(&eb, "/StemSnapH [");
-      for (k = 0; k < privateDicts[fd].nStemSnapH; ++k) {
-	buf = GString::format("{0:s}{1:.4g}",
-			      k > 0 ? " " : "", privateDicts[fd].stemSnapH[k]);
-	eexecWrite(&eb, buf->getCString());
-	delete buf;
+      // the StemSnapH array should be unique values in ascending order --
+      // if not, just skip it
+      for (k = 1; k < privateDicts[fd].nStemSnapH; ++k) {
+	if (privateDicts[fd].stemSnapH[k-1] >= privateDicts[fd].stemSnapH[k]) {
+	  break;
+	}
       }
-      eexecWrite(&eb, "] def\n");
+      if (k == privateDicts[0].nStemSnapH) {
+	eexecWrite(&eb, "/StemSnapH [");
+	for (k = 0; k < privateDicts[fd].nStemSnapH; ++k) {
+	  buf = GString::format("{0:s}{1:.4g}",
+				k > 0 ? " " : "",
+				privateDicts[fd].stemSnapH[k]);
+	  eexecWrite(&eb, buf->getCString());
+	  delete buf;
+	}
+	eexecWrite(&eb, "] def\n");
+      }
     }
     if (privateDicts[fd].nStemSnapV) {
-      eexecWrite(&eb, "/StemSnapV [");
-      for (k = 0; k < privateDicts[fd].nStemSnapV; ++k) {
-	buf = GString::format("{0:s}{1:.4g}",
-			      k > 0 ? " " : "", privateDicts[fd].stemSnapV[k]);
-	eexecWrite(&eb, buf->getCString());
-	delete buf;
+      // the StemSnapV array should be unique values in ascending order --
+      // if not, just skip it
+      for (k = 1; k < privateDicts[fd].nStemSnapV; ++k) {
+	if (privateDicts[fd].stemSnapV[k-1] >= privateDicts[fd].stemSnapV[k]) {
+	  break;
+	}
       }
-      eexecWrite(&eb, "] def\n");
+      if (k == privateDicts[0].nStemSnapV) {
+	eexecWrite(&eb, "/StemSnapV [");
+	for (k = 0; k < privateDicts[fd].nStemSnapV; ++k) {
+	  buf = GString::format("{0:s}{1:.4g}",
+				k > 0 ? " " : "",
+				privateDicts[fd].stemSnapV[k]);
+	  eexecWrite(&eb, buf->getCString());
+	  delete buf;
+	}
+	eexecWrite(&eb, "] def\n");
+      }
     }
     if (privateDicts[fd].hasForceBold) {
       buf = GString::format("/ForceBold {0:s} def\n",

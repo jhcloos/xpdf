@@ -3,7 +3,7 @@ xpdf(1)                                                                xpdf(1)
 
 
 NAME
-       xpdf - Portable Document Format (PDF) file viewer for X (version 3.03)
+       xpdf - Portable Document Format (PDF) file viewer for X (version 3.04)
 
 SYNOPSIS
        xpdf [options] [PDF-file [page | +dest]]
@@ -60,15 +60,15 @@ OPTIONS
               serve color table entries.  This is ignored  with  private  col-
               ormaps and on TrueColor visuals.  [X resource: xpdf.rgbCubeSize]
 
-       -rv    Set reverse video mode.  This reverses the colors of  everything
-              except  images.  It may not always produce great results for PDF
-              files which do weird things with color.  This  also  causes  the
-              paper  color  to  default to black.  [X resource: xpdf.reverseV-
+       -rv    Set  reverse video mode.  This reverses the colors of everything
+              except images.  It may not always produce great results for  PDF
+              files  which  do  weird things with color.  This also causes the
+              paper color to default to black.   [X  resource:  xpdf.reverseV-
               ideo]
 
        -papercolor color
               Set the "paper color", i.e., the background of the page display.
-              This  will  not work too well with PDF files that do things like
+              This will not work too well with PDF files that do  things  like
               filling in white behind the text.  [X resource: xpdf.paperColor]
 
        -mattecolor color
@@ -87,16 +87,12 @@ OPTIONS
        -cont  Start in continuous view mode, i.e., with  one  vertical  scroll
               bar for the whole document.  [config file: continuousView]
 
-       -t1lib yes | no
-              Enable  or  disable  t1lib  (a  Type  1  font rasterizer).  This
-              defaults to "yes".  [config file: enableT1lib]
-
        -freetype yes | no
-              Enable or disable FreeType (a TrueType /  Type  1  font  raster-
+              Enable  or  disable  FreeType  (a TrueType / Type 1 font raster-
               izer).  This defaults to "yes".  [config file: enableFreeType]
 
        -aa yes | no
-              Enable  or  disable font anti-aliasing.  This defaults to "yes".
+              Enable or disable font anti-aliasing.  This defaults  to  "yes".
               [config file: antialias]
 
        -aaVector yes | no
@@ -104,15 +100,15 @@ OPTIONS
               [config file: vectorAntialias]
 
        -ps PS-file
-              Set  the default file name for PostScript output (i.e., the name
+              Set the default file name for PostScript output (i.e., the  name
               which will appear in the print dialog).  This can also be of the
               form '|command' to pipe the PostScript through a command.  [con-
               fig file: psFile]
 
        -paper size
-              Set the paper size to one of "letter", "legal", "A4",  or  "A3".
-              This  can  also be set to "match", which will set the paper size
-              to match the size specified in  the  PDF  file.   [config  file:
+              Set  the  paper size to one of "letter", "legal", "A4", or "A3".
+              This can also be set to "match", which will set the  paper  size
+              to  match  the  size  specified  in the PDF file.  [config file:
               psPaperSize]
 
        -paperw size
@@ -122,14 +118,14 @@ OPTIONS
               Set the paper height, in points.  [config file: psPaperSize]
 
        -level1
-              Generate  Level  1  PostScript.   The resulting PostScript files
-              will be significantly larger (if they contain images), but  will
-              print  on  Level  1  printers.  This also converts all images to
+              Generate Level 1 PostScript.   The  resulting  PostScript  files
+              will  be significantly larger (if they contain images), but will
+              print on Level 1 printers.  This also  converts  all  images  to
               black and white.  [config file: psLevel]
 
        -enc encoding-name
-              Sets the encoding to use for  text  output.   The  encoding-name
-              must  be  defined  with  the unicodeMap command (see xpdfrc(5)).
+              Sets  the  encoding  to  use for text output.  The encoding-name
+              must be defined with the  unicodeMap  command  (see  xpdfrc(5)).
               This defaults to "Latin1" (which is a built-in encoding).  [con-
               fig file: textEncoding]
 
@@ -138,7 +134,7 @@ OPTIONS
               file: textEOL]
 
        -opw password
-              Specify the owner password for the  PDF  file.   Providing  this
+              Specify  the  owner  password  for the PDF file.  Providing this
               will bypass all security restrictions.
 
        -upw password
@@ -148,11 +144,11 @@ OPTIONS
               Open xpdf in full-screen mode, useful for presentations.
 
        -remote name
-              Start/contact  xpdf  remote  server with specified name (see the
+              Start/contact xpdf remote server with specified  name  (see  the
               REMOTE SERVER MODE section below).
 
        -exec command
-              Execute a command (see the COMMANDS section below)  in  an  xpdf
+              Execute  a  command  (see the COMMANDS section below) in an xpdf
               remote server window (with -remote only).
 
        -reload
@@ -162,7 +158,7 @@ OPTIONS
 
        -quit  Kill xpdf remote server (with -remote only).
 
-       -cmd   Print  commands  as  they're  executed  (useful  for debugging).
+       -cmd   Print commands  as  they're  executed  (useful  for  debugging).
               [config file: printCommands]
 
        -q     Don't print any messages or errors.  [config file: errQuiet]
@@ -199,7 +195,7 @@ OPTIONS
               tips on the toolbar buttons.
 
        xpdf.fullScreenMatteColor
-              Sets  the  matte  color  to  be  used  in full-screen mode.  The
+              Sets the matte color  to  be  used  in  full-screen  mode.   The
               default setting is "black".
 
 CONTROLS
@@ -214,19 +210,19 @@ CONTROLS
               Move backward or forward along the history path.
 
        'Page' entry box
-              Move to a specific page number.  Click in the  box  to  activate
+              Move  to  a  specific page number.  Click in the box to activate
               it, type the page number, then hit return.
 
        zoom popup menu
-              Change  the  zoom  factor  (see the description of the -z option
+              Change the zoom factor (see the description  of  the  -z  option
               above).
 
        binoculars button
               Find a text string.
 
        print button
-              Bring up a dialog for generating a PostScript file.  The  dialog
-              has  options  to  set the pages to be printed and the PostScript
+              Bring  up a dialog for generating a PostScript file.  The dialog
+              has options to set the pages to be printed  and  the  PostScript
               file name.  The file name can be '-' for stdout or '|command' to
               pipe the PostScript through a command, e.g., '|lpr'.
 
@@ -240,7 +236,6 @@ CONTROLS
        'Quit' button
               Quit xpdf.
 
-
    Menu
        Pressing the right mouse button will post a popup menu with the follow-
        ing commands:
@@ -249,11 +244,11 @@ CONTROLS
               Open a new PDF file via a file requester.
 
        Open in new window...
-              Create  a  new  window  and  open  a  new  PDF  file  via a file
+              Create a new  window  and  open  a  new  PDF  file  via  a  file
               requester.
 
-       Reload Reload the current PDF file.  Note that  Xpdf  will  reload  the
-              file  automatically  (on  a  page  change  or  redraw) if it has
+       Reload Reload  the  current  PDF  file.  Note that Xpdf will reload the
+              file automatically (on a  page  change  or  redraw)  if  it  has
               changed since it was last loaded.
 
        Save as...
@@ -266,50 +261,45 @@ CONTROLS
               Rotate the page 90 degrees counterclockwise.
 
        Rotate clockwise
-              Rotate the page 90 degrees clockwise.  The two  rotate  commands
-              are  intended  primarily  for PDF files where the rotation isn't
+              Rotate  the  page 90 degrees clockwise.  The two rotate commands
+              are intended primarily for PDF files where  the  rotation  isn't
               correctly specified in the file.
 
        Zoom to selection
               Zoom in to the currently selected rectangle.
 
-       Close  Close the current window.  If this is the only open window,  the
+       Close  Close  the current window.  If this is the only open window, the
               document is closed, but the window is left open (i.e., this menu
               command won't quit xpdf).
 
        Quit   Quit xpdf.
 
-
    Outline
-       If the PDF contains an outline (a.k.a., bookmarks), there  will  be  an
-       outline  pane on the left side of the window.  The width of the outline
+       If  the  PDF  contains an outline (a.k.a., bookmarks), there will be an
+       outline pane on the left side of the window.  The width of the  outline
        pane is adjustable with a vertical split bar via the knob near its bot-
        tom end.
 
-
    Text selection
-       Dragging  the  mouse  with  the left button held down will highlight an
-       arbitrary rectangle.  Any text inside this rectangle will be copied  to
+       Dragging the mouse with the left button held  down  will  highlight  an
+       arbitrary  rectangle.  Any text inside this rectangle will be copied to
        the X selection buffer.
-
 
    Links
        Clicking on a hyperlink will jump to the link's destination.  A link to
-       another PDF document will make xpdf load  that  document.   A  'launch'
-       link  to  an executable program will display a dialog, and if you click
+       another  PDF  document  will  make xpdf load that document.  A 'launch'
+       link to an executable program will display a dialog, and if  you  click
        'ok', execute the program.  URL links call an external command (see the
        WEB BROWSERS section below).
-
 
    Panning
        Dragging the mouse with the middle button held down pans the window.
 
-
    Key bindings
        o      Open a new PDF file via a file requester.
 
-       r      Reload  the  current  PDF  file.  Note that Xpdf will reload the
-              file automatically (on a  page  change  or  redraw)  if  it  has
+       r      Reload the current PDF file.  Note that  Xpdf  will  reload  the
+              file  automatically  (on  a  page  change  or  redraw) if it has
               changed since it was last loaded.
 
        control-L
@@ -327,14 +317,14 @@ CONTROLS
        control-P
               Print.
 
-       n      Move  to  the next page.  Scrolls to the top of the page, unless
+       n      Move to the next page.  Scrolls to the top of the  page,  unless
               scroll lock is turned on.
 
-       p      Move to the previous page.  Scrolls to  the  top  of  the  page,
+       p      Move  to  the  previous  page.   Scrolls to the top of the page,
               unless scroll lock is turned on.
 
        <Space> or <PageDown> or <Next>
-              Scroll  down  on the current page; if already at bottom, move to
+              Scroll down on the current page; if already at bottom,  move  to
               next page.
 
        <Backspace> or <Delete> or <PageUp> or <Previous>
@@ -374,9 +364,9 @@ CONTROLS
        q      Quit xpdf.
 
 WEB BROWSERS
-       If  you  want  to  run  xpdf automatically from netscape or mosaic (and
-       probably other browsers) when you click on a link to a  PDF  file,  you
-       need  to  edit  (or  create) the files .mime.types and .mailcap in your
+       If you want to run xpdf automatically  from  netscape  or  mosaic  (and
+       probably  other  browsers)  when you click on a link to a PDF file, you
+       need to edit (or create) the files .mime.types  and  .mailcap  in  your
        home directory.  In .mime.types add the line:
 
               application/pdf pdf
@@ -388,17 +378,17 @@ WEB BROWSERS
 
        Make sure that xpdf is on your executable search path.
 
-       When you click on a URL link in a PDF file, xpdf will execute the  com-
-       mand  specified  by  the  urlCommand  config  file option, replacing an
-       occurrence of '%s' with the URL.  For example, to  call  netscape  with
+       When  you click on a URL link in a PDF file, xpdf will execute the com-
+       mand specified by the  urlCommand  config  file  option,  replacing  an
+       occurrence  of  '%s'  with the URL.  For example, to call netscape with
        the URL, add this line to your config file:
 
               urlCommand "netscape -remote 'openURL(%s)'"
 
 COMMANDS
        Xpdf's key and mouse bindings are user-configurable, using the bind and
-       unbind options in the config file (see xpdfrc(5)).   The  bind  command
-       allows  you  to bind a key or mouse button to a sequence of one or more
+       unbind  options  in  the config file (see xpdfrc(5)).  The bind command
+       allows you to bind a key or mouse button to a sequence of one  or  more
        commands.
 
    Available Commands
@@ -418,14 +408,14 @@ COMMANDS
               Go to the last page in the PDF file.
 
        gotoLastPageNoScroll
-              Go  to  the last page in the PDF file, with the current relative
+              Go to the last page in the PDF file, with the  current  relative
               scroll position.
 
        nextPage
               Go to the next page.
 
        nextPageNoScroll
-              Go to the next page, with the current relative scroll  position.
+              Go to the next page, with the current relative scroll position.
 
        prevPage
               Go to the previous page.
@@ -459,19 +449,19 @@ COMMANDS
               Scroll down by n pixels, moving to the next page if appropriate.
 
        scrollToTopEdge
-              Scroll to the top edge of the current page, with  no  horizontal
+              Scroll  to  the top edge of the current page, with no horizontal
               movement.
 
        scrollToBottomEdge
-              Scroll  to the bottom edge of the current page, with no horizon-
+              Scroll to the bottom edge of the current page, with no  horizon-
               tal movement.
 
        scrollToLeftEdge
-              Scroll to the left edge of the current page,  with  no  vertical
+              Scroll  to  the  left edge of the current page, with no vertical
               movement.
 
        scrollToRightEdge
-              Scroll  to  the right edge of the current page, with no vertical
+              Scroll to the right edge of the current page, with  no  vertical
               movement.
 
        scrollToTopLeft
@@ -507,7 +497,7 @@ COMMANDS
               Rotate the page 90 degrees counterclockwise.
 
        setSelection(pg,ulx,uly,lrx,lry)
-              Set the selection to the specified coordinates on the  specified
+              Set  the selection to the specified coordinates on the specified
               page.
 
        continuousMode
@@ -540,7 +530,7 @@ COMMANDS
               Open a specified PDF file in a new window.
 
        openFileAtDest(file,dest)
-              Open  a specified PDF file in this window and go to a named des-
+              Open a specified PDF file in this window and go to a named  des-
               tination.
 
        openFileAtDestInNewWin(file,dest)
@@ -554,10 +544,15 @@ COMMANDS
        raise  Raise the window to the front.
 
        closeWindow
-              Close the window.
+              Close the window.  If this was the last open window,  clear  the
+              window, but don't quit from Xpdf.
+
+       closeWindowOrQuit
+              Close  the  window.  If this was the last open window, quit from
+              Xpdf.
 
        run(external-command-string)
-              Run  an  external command.  The following escapes are allowed in
+              Run an external command.  The following escapes are  allowed  in
               the command string:
 
                   %f => PDF file name (or an empty string if no
@@ -581,6 +576,11 @@ COMMANDS
                   %j => x coordinate of the mouse pointer
                   %k => y coordinate of the mouse pointer
                   %% => %
+
+              The  external  command  string will often contain spaces, so the
+              whole command must be quoted in the xpdfrc file:
+
+                  bind x "run(ls -l)"
 
 
        openOutline
@@ -703,7 +703,7 @@ COMMANDS
            bind w              any         zoomFitWidth
            bind alt-f          any         toggleFullScreenMode
            bind ctrl-l         any         redraw
-           bind ctrl-w         any         closeWindow
+           bind ctrl-w         any         closeWindowOrQuit
            bind ?              any         about
            bind q              any         quit
            bind Q              any         quit
@@ -755,14 +755,14 @@ EXIT CODES
        99     Other error.
 
 AUTHOR
-       The  xpdf  software  and  documentation are copyright 1996-2011 Glyph &
+       The  xpdf  software  and  documentation are copyright 1996-2014 Glyph &
        Cog, LLC.
 
 SEE ALSO
-       pdftops(1),  pdftotext(1),   pdfinfo(1),   pdffonts(1),   pdfdetach(1),
-       pdftoppm(1), pdfimages(1), xpdfrc(5)
+       pdftops(1), pdftotext(1), pdftohtml(1), pdfinfo(1), pdffonts(1), pdfde-
+       tach(1), pdftoppm(1), pdftopng(1), pdfimages(1), xpdfrc(5)
        http://www.foolabs.com/xpdf/
 
 
 
-                                15 August 2011                         xpdf(1)
+                                  28 May 2014                          xpdf(1)

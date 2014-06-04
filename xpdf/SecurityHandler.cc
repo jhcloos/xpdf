@@ -158,7 +158,7 @@ StandardSecurityHandler::StandardSecurityHandler(PDFDoc *docA,
     if ((encRevision <= 4 &&
 	 ownerKeyObj.getString()->getLength() == 32 &&
 	 userKeyObj.getString()->getLength() == 32) ||
-	(encRevision == 5 &&
+	((encRevision == 5 || encRevision == 6) &&
 	 // the spec says 48 bytes, but Acrobat pads them out longer
 	 ownerKeyObj.getString()->getLength() >= 48 &&
 	 userKeyObj.getString()->getLength() >= 48 &&
@@ -180,7 +180,7 @@ StandardSecurityHandler::StandardSecurityHandler(PDFDoc *docA,
       //~ doesn't handle the case where StmF, StrF, and EFF are not all the
       //~ same)
       if ((encVersion == 4 || encVersion == 5) &&
-	  (encRevision == 4 || encRevision == 5)) {
+	  (encRevision == 4 || encRevision == 5 || encRevision == 6)) {
 	encryptDictA->dictLookup("CF", &cryptFiltersObj);
 	encryptDictA->dictLookup("StmF", &streamFilterObj);
 	encryptDictA->dictLookup("StrF", &stringFilterObj);
@@ -216,7 +216,9 @@ StandardSecurityHandler::StandardSecurityHandler(PDFDoc *docA,
 		cfLengthObj.free();
 	      } else if (cfmObj.isName("AESV3")) {
 		encVersion = 5;
-		encRevision = 5;
+		if (encRevision != 5 && encRevision != 6) {
+		  encRevision = 6;
+		}
 		encAlgorithm = cryptAES256;
 		if (cryptFilterObj.dictLookup("Length",
 					      &cfLengthObj)->isInt()) {
@@ -254,15 +256,15 @@ StandardSecurityHandler::StandardSecurityHandler(PDFDoc *docA,
 	} else {
 	  fileID = new GString();
 	}
-	if (fileKeyLength > 16 || fileKeyLength < 0) {
+	if (fileKeyLength > 16 || fileKeyLength <= 0) {
 	  fileKeyLength = 16;
 	}
 	ok = gTrue;
-      } else if (encVersion == 5 && encRevision == 5) {
+      } else if (encVersion == 5 && (encRevision == 5 || encRevision == 6)) {
 	fileID = new GString(); // unused for V=R=5
 	ownerEnc = ownerEncObj.getString()->copy();
 	userEnc = userEncObj.getString()->copy();
-	if (fileKeyLength > 32 || fileKeyLength < 0) {
+	if (fileKeyLength > 32 || fileKeyLength <= 0) {
 	  fileKeyLength = 32;
 	}
 	ok = gTrue;

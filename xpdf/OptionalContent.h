@@ -2,7 +2,7 @@
 //
 // OptionalContent.h
 //
-// Copyright 2008 Glyph & Cog, LLC
+// Copyright 2008-2013 Glyph & Cog, LLC
 //
 //========================================================================
 
@@ -22,6 +22,7 @@
 class GString;
 class GList;
 class PDFDoc;
+class TextString;
 class XRef;
 class OptionalContentGroup;
 class OCDisplayNode;
@@ -78,8 +79,8 @@ public:
 
   GBool matches(Ref *refA);
 
-  Unicode *getName() { return name; }
-  int getNameLength() { return nameLen; }
+  Unicode *getName();
+  int getNameLength();
   OCUsageState getViewState() { return viewState; }
   OCUsageState getPrintState() { return printState; }
   GBool getState() { return state; }
@@ -87,15 +88,16 @@ public:
 
 private:
 
-  OptionalContentGroup(Ref *refA, Unicode *nameA, int nameLenA,
+  OptionalContentGroup(Ref *refA, TextString *nameA,
 		       OCUsageState viewStateA, OCUsageState printStateA);
 
   Ref ref;
-  Unicode *name;
-  int nameLen;
+  TextString *name;
   OCUsageState viewState,	// suggested state when viewing
                printState;	// suggested state when printing
   GBool state;			// current state (on/off)
+
+  friend class OCDisplayNode;
 };
 
 //------------------------------------------------------------------------
@@ -108,8 +110,8 @@ public:
   OCDisplayNode();
   ~OCDisplayNode();
 
-  Unicode *getName() { return name; }
-  int getNameLength() { return nameLen; }
+  Unicode *getName();
+  int getNameLength();
   OptionalContentGroup *getOCG() { return ocg; }
   int getNumChildren();
   OCDisplayNode *getChild(int idx);
@@ -122,8 +124,7 @@ private:
   void addChildren(GList *childrenA);
   GList *takeChildren();
 
-  Unicode *name;		// display name (may be NULL)
-  int nameLen;
+  TextString *name;		// display name
   OptionalContentGroup *ocg;	// NULL for display labels
   GList *children;		// NULL if there are no children
 				//   [OCDisplayNode]

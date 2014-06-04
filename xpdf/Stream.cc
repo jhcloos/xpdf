@@ -16,7 +16,7 @@
 #include <stdlib.h>
 #include <stddef.h>
 #include <limits.h>
-#ifndef WIN32
+#ifndef _WIN32
 #include <unistd.h>
 #endif
 #include <string.h>
@@ -98,11 +98,29 @@ char *Stream::getLine(char *buf, int size) {
   return buf;
 }
 
+Guint Stream::discardChars(Guint n) {
+  char buf[4096];
+  Guint count, i, j;
+
+  count = 0;
+  while (count < n) {
+    if ((i = n - count) > sizeof(buf)) {
+      i = (Guint)sizeof(buf);
+    }
+    j = (Guint)getBlock(buf, (int)i);
+    count += j;
+    if (j != i) {
+      break;
+    }
+  }
+  return count;
+}
+
 GString *Stream::getPSFilter(int psLevel, const char *indent) {
   return new GString();
 }
 
-Stream *Stream::addFilters(Object *dict) {
+Stream *Stream::addFilters(Object *dict, int recursion) {
   Object obj, obj2;
   Object params, params2;
   Stream *str;
@@ -120,7 +138,7 @@ Stream *Stream::addFilters(Object *dict) {
     dict->dictLookup("DP", &params);
   }
   if (obj.isName()) {
-    str = makeFilter(obj.getName(), str, &params);
+    str = makeFilter(obj.getName(), str, &params, recursion);
   } else if (obj.isArray()) {
     for (i = 0; i < obj.arrayGetLength(); ++i) {
       obj.arrayGet(i, &obj2);
@@ -129,7 +147,7 @@ Stream *Stream::addFilters(Object *dict) {
       else
 	params2.initNull();
       if (obj2.isName()) {
-	str = makeFilter(obj2.getName(), str, &params2);
+	str = makeFilter(obj2.getName(), str, &params2, recursion);
       } else {
 	error(errSyntaxError, getPos(), "Bad filter name");
 	str = new EOFStream(str);
@@ -146,7 +164,8 @@ Stream *Stream::addFilters(Object *dict) {
   return str;
 }
 
-Stream *Stream::makeFilter(char *name, Stream *str, Object *params) {
+Stream *Stream::makeFilter(char *name, Stream *str, Object *params,
+			   int recursion) {
   int pred;			// parameters
   int colors;
   int bits;
@@ -168,23 +187,23 @@ Stream *Stream::makeFilter(char *name, Stream *str, Object *params) {
     bits = 8;
     early = 1;
     if (params->isDict()) {
-      params->dictLookup("Predictor", &obj);
+      params->dictLookup("Predictor", &obj, recursion);
       if (obj.isInt())
 	pred = obj.getInt();
       obj.free();
-      params->dictLookup("Columns", &obj);
+      params->dictLookup("Columns", &obj, recursion);
       if (obj.isInt())
 	columns = obj.getInt();
       obj.free();
-      params->dictLookup("Colors", &obj);
+      params->dictLookup("Colors", &obj, recursion);
       if (obj.isInt())
 	colors = obj.getInt();
       obj.free();
-      params->dictLookup("BitsPerComponent", &obj);
+      params->dictLookup("BitsPerComponent", &obj, recursion);
       if (obj.isInt())
 	bits = obj.getInt();
       obj.free();
-      params->dictLookup("EarlyChange", &obj);
+      params->dictLookup("EarlyChange", &obj, recursion);
       if (obj.isInt())
 	early = obj.getInt();
       obj.free();
@@ -201,37 +220,37 @@ Stream *Stream::makeFilter(char *name, Stream *str, Object *params) {
     endOfBlock = gTrue;
     black = gFalse;
     if (params->isDict()) {
-      params->dictLookup("K", &obj);
+      params->dictLookup("K", &obj, recursion);
       if (obj.isInt()) {
 	encoding = obj.getInt();
       }
       obj.free();
-      params->dictLookup("EndOfLine", &obj);
+      params->dictLookup("EndOfLine", &obj, recursion);
       if (obj.isBool()) {
 	endOfLine = obj.getBool();
       }
       obj.free();
-      params->dictLookup("EncodedByteAlign", &obj);
+      params->dictLookup("EncodedByteAlign", &obj, recursion);
       if (obj.isBool()) {
 	byteAlign = obj.getBool();
       }
       obj.free();
-      params->dictLookup("Columns", &obj);
+      params->dictLookup("Columns", &obj, recursion);
       if (obj.isInt()) {
 	columns = obj.getInt();
       }
       obj.free();
-      params->dictLookup("Rows", &obj);
+      params->dictLookup("Rows", &obj, recursion);
       if (obj.isInt()) {
 	rows = obj.getInt();
       }
       obj.free();
-      params->dictLookup("EndOfBlock", &obj);
+      params->dictLookup("EndOfBlock", &obj, recursion);
       if (obj.isBool()) {
 	endOfBlock = obj.getBool();
       }
       obj.free();
-      params->dictLookup("BlackIs1", &obj);
+      params->dictLookup("BlackIs1", &obj, recursion);
       if (obj.isBool()) {
 	black = obj.getBool();
       }
@@ -242,7 +261,7 @@ Stream *Stream::makeFilter(char *name, Stream *str, Object *params) {
   } else if (!strcmp(name, "DCTDecode") || !strcmp(name, "DCT")) {
     colorXform = -1;
     if (params->isDict()) {
-      if (params->dictLookup("ColorTransform", &obj)->isInt()) {
+      if (params->dictLookup("ColorTransform", &obj, recursion)->isInt()) {
 	colorXform = obj.getInt();
       }
       obj.free();
@@ -254,19 +273,19 @@ Stream *Stream::makeFilter(char *name, Stream *str, Object *params) {
     colors = 1;
     bits = 8;
     if (params->isDict()) {
-      params->dictLookup("Predictor", &obj);
+      params->dictLookup("Predictor", &obj, recursion);
       if (obj.isInt())
 	pred = obj.getInt();
       obj.free();
-      params->dictLookup("Columns", &obj);
+      params->dictLookup("Columns", &obj, recursion);
       if (obj.isInt())
 	columns = obj.getInt();
       obj.free();
-      params->dictLookup("Colors", &obj);
+      params->dictLookup("Colors", &obj, recursion);
       if (obj.isInt())
 	colors = obj.getInt();
       obj.free();
-      params->dictLookup("BitsPerComponent", &obj);
+      params->dictLookup("BitsPerComponent", &obj, recursion);
       if (obj.isInt())
 	bits = obj.getInt();
       obj.free();
@@ -274,7 +293,7 @@ Stream *Stream::makeFilter(char *name, Stream *str, Object *params) {
     str = new FlateStream(str, pred, columns, colors, bits);
   } else if (!strcmp(name, "JBIG2Decode")) {
     if (params->isDict()) {
-      params->dictLookup("JBIG2Globals", &globals);
+      params->dictLookup("JBIG2Globals", &globals, recursion);
     }
     str = new JBIG2Stream(str, &globals);
     globals.free();
@@ -314,7 +333,7 @@ void FilterStream::close() {
   str->close();
 }
 
-void FilterStream::setPos(Guint pos, int dir) {
+void FilterStream::setPos(GFileOffset pos, int dir) {
   error(errInternal, -1, "Called setPos() on FilterStream");
 }
 
@@ -365,6 +384,10 @@ void ImageStream::reset() {
   str->reset();
 }
 
+void ImageStream::close() {
+  str->close();
+}
+
 GBool ImageStream::getPixel(Guchar *pix) {
   int i;
 
@@ -405,6 +428,10 @@ Guchar *ImageStream::getLine() {
     }
   } else if (nBits == 8) {
     // special case: imgLine == inputLine
+  } else if (nBits == 16) {
+    for (i = 0; i < nVals; ++i) {
+      imgLine[i] = (Guchar)inputLine[2*i];
+    }
   } else {
     bitMask = (1 << nBits) - 1;
     buf = 0;
@@ -451,14 +478,19 @@ StreamPredictor::StreamPredictor(Stream *strA, int predictorA,
     return;
   }
   predLine = (Guchar *)gmalloc(rowBytes);
-  memset(predLine, 0, rowBytes);
-  predIdx = rowBytes;
+
+  reset();
 
   ok = gTrue;
 }
 
 StreamPredictor::~StreamPredictor() {
   gfree(predLine);
+}
+
+void StreamPredictor::reset() {
+  memset(predLine, 0, rowBytes);
+  predIdx = rowBytes;
 }
 
 int StreamPredictor::lookChar() {
@@ -573,19 +605,19 @@ GBool StreamPredictor::getNextLine() {
 
   // apply TIFF (component) predictor
   if (predictor == 2) {
-    if (nBits == 1) {
-      inBuf = predLine[pixBytes - 1];
-      for (i = pixBytes; i < rowBytes; i += 8) {
-	// 1-bit add is just xor
-	inBuf = (inBuf << 8) | predLine[i];
-	predLine[i] ^= inBuf >> nComps;
-      }
-    } else if (nBits == 8) {
+    if (nBits == 8) {
       for (i = pixBytes; i < rowBytes; ++i) {
 	predLine[i] += predLine[i - nComps];
       }
+    } else if (nBits == 16) {
+      for (i = pixBytes; i < rowBytes; i += 2) {
+	c = ((predLine[i] + predLine[i - 2*nComps]) << 8) +
+	    predLine[i + 1] + predLine[i + 1 - 2*nComps];
+	predLine[i] = (Guchar)(c >> 8);
+	predLine[i+1] = (Guchar)(c & 0xff);
+      }
     } else {
-      memset(upLeftBuf, 0, nComps + 1);
+      memset(upLeftBuf, 0, nComps);
       bitMask = (1 << nBits) - 1;
       inBuf = outBuf = 0;
       inBits = outBits = 0;
@@ -624,8 +656,8 @@ GBool StreamPredictor::getNextLine() {
 // FileStream
 //------------------------------------------------------------------------
 
-FileStream::FileStream(FILE *fA, Guint startA, GBool limitedA,
-		       Guint lengthA, Object *dictA):
+FileStream::FileStream(FILE *fA, GFileOffset startA, GBool limitedA,
+		       GFileOffset lengthA, Object *dictA):
     BaseStream(dictA) {
   f = fA;
   start = startA;
@@ -641,22 +673,14 @@ FileStream::~FileStream() {
   close();
 }
 
-Stream *FileStream::makeSubStream(Guint startA, GBool limitedA,
-				  Guint lengthA, Object *dictA) {
+Stream *FileStream::makeSubStream(GFileOffset startA, GBool limitedA,
+				  GFileOffset lengthA, Object *dictA) {
   return new FileStream(f, startA, limitedA, lengthA, dictA);
 }
 
 void FileStream::reset() {
-#if HAVE_FSEEKO
-  savePos = (Guint)ftello(f);
-  fseeko(f, start, SEEK_SET);
-#elif HAVE_FSEEK64
-  savePos = (Guint)ftell64(f);
-  fseek64(f, start, SEEK_SET);
-#else
-  savePos = (Guint)ftell(f);
-  fseek(f, start, SEEK_SET);
-#endif
+  savePos = gftell(f);
+  gfseek(f, start, SEEK_SET);
   saved = gTrue;
   bufPtr = bufEnd = buf;
   bufPos = start;
@@ -664,13 +688,7 @@ void FileStream::reset() {
 
 void FileStream::close() {
   if (saved) {
-#if HAVE_FSEEKO
-    fseeko(f, savePos, SEEK_SET);
-#elif HAVE_FSEEK64
-    fseek64(f, savePos, SEEK_SET);
-#else
-    fseek(f, savePos, SEEK_SET);
-#endif
+    gfseek(f, savePos, SEEK_SET);
     saved = gFalse;
   }
 }
@@ -705,7 +723,7 @@ GBool FileStream::fillBuf() {
     return gFalse;
   }
   if (limited && bufPos + fileStreamBufSize > start + length) {
-    n = start + length - bufPos;
+    n = (int)(start + length - bufPos);
   } else {
     n = fileStreamBufSize;
   }
@@ -717,41 +735,20 @@ GBool FileStream::fillBuf() {
   return gTrue;
 }
 
-void FileStream::setPos(Guint pos, int dir) {
-  Guint size;
+void FileStream::setPos(GFileOffset pos, int dir) {
+  GFileOffset size;
 
   if (dir >= 0) {
-#if HAVE_FSEEKO
-    fseeko(f, pos, SEEK_SET);
-#elif HAVE_FSEEK64
-    fseek64(f, pos, SEEK_SET);
-#else
-    fseek(f, pos, SEEK_SET);
-#endif
+    gfseek(f, pos, SEEK_SET);
     bufPos = pos;
   } else {
-#if HAVE_FSEEKO
-    fseeko(f, 0, SEEK_END);
-    size = (Guint)ftello(f);
-#elif HAVE_FSEEK64
-    fseek64(f, 0, SEEK_END);
-    size = (Guint)ftell64(f);
-#else
-    fseek(f, 0, SEEK_END);
-    size = (Guint)ftell(f);
-#endif
-    if (pos > size)
-      pos = (Guint)size;
-#if HAVE_FSEEKO
-    fseeko(f, -(int)pos, SEEK_END);
-    bufPos = (Guint)ftello(f);
-#elif HAVE_FSEEK64
-    fseek64(f, -(int)pos, SEEK_END);
-    bufPos = (Guint)ftell64(f);
-#else
-    fseek(f, -(int)pos, SEEK_END);
-    bufPos = (Guint)ftell(f);
-#endif
+    gfseek(f, 0, SEEK_END);
+    size = gftell(f);
+    if (pos > size) {
+      pos = size;
+    }
+    gfseek(f, -pos, SEEK_END);
+    bufPos = gftell(f);
   }
   bufPtr = bufEnd = buf;
 }
@@ -782,17 +779,24 @@ MemStream::~MemStream() {
   }
 }
 
-Stream *MemStream::makeSubStream(Guint startA, GBool limited,
-				 Guint lengthA, Object *dictA) {
+Stream *MemStream::makeSubStream(GFileOffset startA, GBool limited,
+				 GFileOffset lengthA, Object *dictA) {
   MemStream *subStr;
-  Guint newLength;
+  Guint newStart, newLength;
 
-  if (!limited || startA + lengthA > start + length) {
-    newLength = start + length - startA;
+  if (startA < start) {
+    newStart = start;
+  } else if (startA > start + length) {
+    newStart = start + (int)length;
   } else {
-    newLength = lengthA;
+    newStart = (int)startA;
   }
-  subStr = new MemStream(buf, startA, newLength, dictA);
+  if (!limited || newStart + lengthA > start + length) {
+    newLength = start + length - newStart;
+  } else {
+    newLength = (Guint)lengthA;
+  }
+  subStr = new MemStream(buf, newStart, newLength, dictA);
   return subStr;
 }
 
@@ -819,13 +823,13 @@ int MemStream::getBlock(char *blk, int size) {
   return n;
 }
 
-void MemStream::setPos(Guint pos, int dir) {
+void MemStream::setPos(GFileOffset pos, int dir) {
   Guint i;
 
   if (dir >= 0) {
-    i = pos;
+    i = (Guint)pos;
   } else {
-    i = start + length - pos;
+    i = (Guint)(start + length - pos);
   }
   if (i < start) {
     i = start;
@@ -846,7 +850,7 @@ void MemStream::moveStart(int delta) {
 //------------------------------------------------------------------------
 
 EmbedStream::EmbedStream(Stream *strA, Object *dictA,
-			 GBool limitedA, Guint lengthA):
+			 GBool limitedA, GFileOffset lengthA):
     BaseStream(dictA) {
   str = strA;
   limited = limitedA;
@@ -856,8 +860,8 @@ EmbedStream::EmbedStream(Stream *strA, Object *dictA,
 EmbedStream::~EmbedStream() {
 }
 
-Stream *EmbedStream::makeSubStream(Guint start, GBool limitedA,
-				   Guint lengthA, Object *dictA) {
+Stream *EmbedStream::makeSubStream(GFileOffset start, GBool limitedA,
+				   GFileOffset lengthA, Object *dictA) {
   error(errInternal, -1, "Called makeSubStream() on EmbedStream");
   return NULL;
 }
@@ -887,11 +891,11 @@ int EmbedStream::getBlock(char *blk, int size) {
   return str->getBlock(blk, size);
 }
 
-void EmbedStream::setPos(Guint pos, int dir) {
+void EmbedStream::setPos(GFileOffset pos, int dir) {
   error(errInternal, -1, "Called setPos() on EmbedStream");
 }
 
-Guint EmbedStream::getStart() {
+GFileOffset EmbedStream::getStart() {
   error(errInternal, -1, "Called getStart() on EmbedStream");
   return 0;
 }
@@ -1173,6 +1177,9 @@ int LZWStream::getBlock(char *blk, int size) {
 
 void LZWStream::reset() {
   str->reset();
+  if (pred) {
+    pred->reset();
+  }
   eof = gFalse;
   inputBits = 0;
   clearTable();
@@ -2068,14 +2075,16 @@ GBool CCITTFaxStream::isBinary(GBool last) {
 //------------------------------------------------------------------------
 
 // IDCT constants (20.12 fixed point format)
-#define dctCos1    4017		// cos(pi/16)
-#define dctSin1     799		// sin(pi/16)
-#define dctCos3    3406		// cos(3*pi/16)
-#define dctSin3    2276		// sin(3*pi/16)
-#define dctCos6    1567		// cos(6*pi/16)
-#define dctSin6    3784		// sin(6*pi/16)
-#define dctSqrt2   5793		// sqrt(2)
-#define dctSqrt1d2 2896		// sqrt(2) / 2
+#define dctSqrt2          5793	// sqrt(2)
+#define dctSqrt2Cos6      2217	// sqrt(2) * cos(6*pi/16)
+#define dctSqrt2Cos6PSin6 7568	// sqrt(2) * (cos(6*pi/16) + sin(6*pi/16))
+#define dctSqrt2Sin6MCos6 3135	// sqrt(2) * (sin(6*pi/16) - cos(6*pi/16))
+#define dctCos3           3406	// cos(3*pi/16)
+#define dctCos3PSin3      5681	// cos(3*pi/16) + sin(3*pi/16)
+#define dctSin3MCos3     -1130	// sin(3*pi/16) - cos(3*pi/16)
+#define dctCos1           4017	// cos(pi/16)
+#define dctCos1PSin1      4816	// cos(pi/16) + sin(pi/16)
+#define dctSin1MCos1     -3218	// sin(pi/16) - cos(pi/16)
 
 // color conversion parameters (16.16 fixed point format)
 #define dctCrToR   91881	//  1.4020
@@ -2083,10 +2092,47 @@ GBool CCITTFaxStream::isBinary(GBool last) {
 #define dctCrToG  -46802	// -0.71413636
 #define dctCbToB  116130	//  1.772
 
-// clip [-256,511] --> [0,255]
-#define dctClipOffset 256
-static Guchar dctClip[768];
-static int dctClipInit = 0;
+// The dctClip function clips signed integers to the [0,255] range.
+// To handle valid DCT inputs, this must support an input range of at
+// least [-256,511].  Invalid DCT inputs (e.g., from damaged PDF
+// files) can result in arbitrary values, so we want to mask those
+// out.  We round the input range size up to a power of 2 (so we can
+// use a bit mask), which gives us an input range of [-384,639].  The
+// end result is:
+//     input       output
+//     ----------  ------
+//     <-384       X        invalid inputs -> output is "don't care"
+//     -384..-257  0        invalid inputs, clipped
+//     -256..-1    0        valid inputs, need to be clipped
+//     0..255      0..255
+//     256..511    255      valid inputs, need to be clipped
+//     512..639    255      invalid inputs, clipped
+//     >=512       X        invalid inputs -> output is "don't care"
+
+#define dctClipOffset  384
+#define dctClipMask   1023
+static Guchar dctClipData[1024];
+
+static inline void dctClipInit() {
+  static int initDone = 0;
+  int i;
+  if (!initDone) {
+    for (i = -384; i < 0; ++i) {
+      dctClipData[dctClipOffset + i] = 0;
+    }
+    for (i = 0; i < 256; ++i) {
+      dctClipData[dctClipOffset + i] = i;
+    }
+    for (i = 256; i < 639; ++i) {
+      dctClipData[dctClipOffset + i] = 255;
+    }
+    initDone = 1;
+  }
+}
+
+static inline int dctClip(int x) {
+  return dctClipData[(dctClipOffset + x) & dctClipMask];
+}
 
 // zig zag decode map
 static int dctZigZag[64] = {
@@ -2109,7 +2155,7 @@ static int dctZigZag[64] = {
 
 DCTStream::DCTStream(Stream *strA, GBool colorXformA):
     FilterStream(strA) {
-  int i, j;
+  int i;
 
   colorXform = colorXformA;
   progressive = interleaved = gFalse;
@@ -2117,23 +2163,15 @@ DCTStream::DCTStream(Stream *strA, GBool colorXformA):
   mcuWidth = mcuHeight = 0;
   numComps = 0;
   comp = 0;
-  x = y = dy = 0;
+  x = y = 0;
   for (i = 0; i < 4; ++i) {
-    for (j = 0; j < 32; ++j) {
-      rowBuf[i][j] = NULL;
-    }
     frameBuf[i] = NULL;
   }
+  rowBuf = NULL;
+  memset(dcHuffTables, 0, sizeof(dcHuffTables));
+  memset(acHuffTables, 0, sizeof(acHuffTables));
 
-  if (!dctClipInit) {
-    for (i = -256; i < 0; ++i)
-      dctClip[dctClipOffset + i] = 0;
-    for (i = 0; i < 256; ++i)
-      dctClip[dctClipOffset + i] = i;
-    for (i = 256; i < 512; ++i)
-      dctClip[dctClipOffset + i] = 255;
-    dctClipInit = 1;
-  }
+  dctClipInit();
 }
 
 DCTStream::~DCTStream() {
@@ -2142,7 +2180,7 @@ DCTStream::~DCTStream() {
 }
 
 void DCTStream::reset() {
-  int i, j;
+  int i;
 
   str->reset();
 
@@ -2157,6 +2195,8 @@ void DCTStream::reset() {
   restartInterval = 0;
 
   if (!readHeader()) {
+    // force an EOF condition
+    progressive = gTrue;
     y = height;
     return;
   }
@@ -2229,17 +2269,11 @@ void DCTStream::reset() {
 
     // allocate a buffer for one row of MCUs
     bufWidth = ((width + mcuWidth - 1) / mcuWidth) * mcuWidth;
-    for (i = 0; i < numComps; ++i) {
-      for (j = 0; j < mcuHeight; ++j) {
-	rowBuf[i][j] = (Guchar *)gmallocn(bufWidth, sizeof(Guchar));
-      }
-    }
+    rowBuf = (Guchar *)gmallocn(numComps * mcuHeight, bufWidth);
+    rowBufPtr = rowBufEnd = rowBuf;
 
     // initialize counters
-    comp = 0;
-    x = 0;
-    y = 0;
-    dy = mcuHeight;
+    y = -mcuHeight;
 
     restartMarker = 0xd0;
     restart();
@@ -2247,26 +2281,24 @@ void DCTStream::reset() {
 }
 
 void DCTStream::close() {
-  int i, j;
+  int i;
 
   for (i = 0; i < 4; ++i) {
-    for (j = 0; j < 32; ++j) {
-      gfree(rowBuf[i][j]);
-      rowBuf[i][j] = NULL;
-    }
     gfree(frameBuf[i]);
     frameBuf[i] = NULL;
   }
+  gfree(rowBuf);
+  rowBuf = NULL;
   FilterStream::close();
 }
 
 int DCTStream::getChar() {
   int c;
 
-  if (y >= height) {
-    return EOF;
-  }
   if (progressive || !interleaved) {
+    if (y >= height) {
+      return EOF;
+    }
     c = frameBuf[comp][y * bufWidth + x];
     if (++comp == numComps) {
       comp = 0;
@@ -2276,48 +2308,38 @@ int DCTStream::getChar() {
       }
     }
   } else {
-    if (dy >= mcuHeight) {
+    if (rowBufPtr == rowBufEnd) {
+      if (y + mcuHeight >= height) {
+	return EOF;
+      }
+      y += mcuHeight;
       if (!readMCURow()) {
 	y = height;
 	return EOF;
       }
-      comp = 0;
-      x = 0;
-      dy = 0;
     }
-    c = rowBuf[comp][dy][x];
-    if (++comp == numComps) {
-      comp = 0;
-      if (++x == width) {
-	x = 0;
-	++y;
-	++dy;
-	if (y == height) {
-	  readTrailer();
-	}
-      }
-    }
+    c = *rowBufPtr++;
   }
   return c;
 }
 
 int DCTStream::lookChar() {
-  if (y >= height) {
-    return EOF;
-  }
   if (progressive || !interleaved) {
+    if (y >= height) {
+      return EOF;
+    }
     return frameBuf[comp][y * bufWidth + x];
   } else {
-    if (dy >= mcuHeight) {
+    if (rowBufPtr == rowBufEnd) {
+      if (y + mcuHeight >= height) {
+	return EOF;
+      }
       if (!readMCURow()) {
 	y = height;
 	return EOF;
       }
-      comp = 0;
-      x = 0;
-      dy = 0;
     }
-    return rowBuf[comp][dy][x];
+    return *rowBufPtr;
   }
 }
 
@@ -2375,38 +2397,49 @@ GBool DCTStream::readMCURow() {
 	  }
 	  transformDataUnit(quantTables[compInfo[cc].quantTable],
 			    data1, data2);
-	  if (hSub == 1 && vSub == 1) {
+	  if (hSub == 1 && vSub == 1 && x1+x2+8 <= width) {
 	    for (y3 = 0, i = 0; y3 < 8; ++y3, i += 8) {
-	      p1 = &rowBuf[cc][y2+y3][x1+x2];
-	      p1[0] = data2[i];
-	      p1[1] = data2[i+1];
-	      p1[2] = data2[i+2];
-	      p1[3] = data2[i+3];
-	      p1[4] = data2[i+4];
-	      p1[5] = data2[i+5];
-	      p1[6] = data2[i+6];
-	      p1[7] = data2[i+7];
+	      p1 = &rowBuf[((y2+y3) * width + (x1+x2)) * numComps + cc];
+	      p1[0]          = data2[i];
+	      p1[  numComps] = data2[i+1];
+	      p1[2*numComps] = data2[i+2];
+	      p1[3*numComps] = data2[i+3];
+	      p1[4*numComps] = data2[i+4];
+	      p1[5*numComps] = data2[i+5];
+	      p1[6*numComps] = data2[i+6];
+	      p1[7*numComps] = data2[i+7];
 	    }
-	  } else if (hSub == 2 && vSub == 2) {
+	  } else if (hSub == 2 && vSub == 2 && x1+x2+16 <= width) {
 	    for (y3 = 0, i = 0; y3 < 16; y3 += 2, i += 8) {
-	      p1 = &rowBuf[cc][y2+y3][x1+x2];
-	      p2 = &rowBuf[cc][y2+y3+1][x1+x2];
-	      p1[0] = p1[1] = p2[0] = p2[1] = data2[i];
-	      p1[2] = p1[3] = p2[2] = p2[3] = data2[i+1];
-	      p1[4] = p1[5] = p2[4] = p2[5] = data2[i+2];
-	      p1[6] = p1[7] = p2[6] = p2[7] = data2[i+3];
-	      p1[8] = p1[9] = p2[8] = p2[9] = data2[i+4];
-	      p1[10] = p1[11] = p2[10] = p2[11] = data2[i+5];
-	      p1[12] = p1[13] = p2[12] = p2[13] = data2[i+6];
-	      p1[14] = p1[15] = p2[14] = p2[15] = data2[i+7];
+	      p1 = &rowBuf[((y2+y3) * width + (x1+x2)) * numComps + cc];
+	      p2 = p1 + width * numComps;
+	      p1[0] = p1[numComps] =
+		p2[0] = p2[numComps] = data2[i];
+	      p1[2*numComps] = p1[3*numComps] =
+		p2[2*numComps] = p2[3*numComps] = data2[i+1];
+	      p1[4*numComps] = p1[5*numComps] =
+		p2[4*numComps] = p2[5*numComps] = data2[i+2];
+	      p1[6*numComps] = p1[7*numComps] =
+		p2[6*numComps] = p2[7*numComps] = data2[i+3];
+	      p1[8*numComps] = p1[9*numComps] =
+		p2[8*numComps] = p2[9*numComps] = data2[i+4];
+	      p1[10*numComps] = p1[11*numComps] =
+		p2[10*numComps] = p2[11*numComps] = data2[i+5];
+	      p1[12*numComps] = p1[13*numComps] =
+		p2[12*numComps] = p2[13*numComps] = data2[i+6];
+	      p1[14*numComps] = p1[15*numComps] =
+		p2[14*numComps] = p2[15*numComps] = data2[i+7];
 	    }
 	  } else {
+	    p1 = &rowBuf[(y2 * width + (x1+x2)) * numComps + cc];
 	    i = 0;
 	    for (y3 = 0, y4 = 0; y3 < 8; ++y3, y4 += vSub) {
 	      for (x3 = 0, x4 = 0; x3 < 8; ++x3, x4 += hSub) {
-		for (y5 = 0; y5 < vSub; ++y5)
-		  for (x5 = 0; x5 < hSub; ++x5)
-		    rowBuf[cc][y2+y4+y5][x1+x2+x4+x5] = data2[i];
+		for (y5 = 0; y5 < vSub; ++y5) {
+		  for (x5 = 0; x5 < hSub && x1+x2+x4+x5 < width; ++x5) {
+		    p1[((y4+y5) * width + (x4+x5)) * numComps] = data2[i];
+		  }
+		}
 		++i;
 	      }
 	    }
@@ -2415,42 +2448,46 @@ GBool DCTStream::readMCURow() {
       }
     }
     --restartCtr;
+  }
 
-    // color space conversion
-    if (colorXform) {
-      // convert YCbCr to RGB
-      if (numComps == 3) {
-	for (y2 = 0; y2 < mcuHeight; ++y2) {
-	  for (x2 = 0; x2 < mcuWidth; ++x2) {
-	    pY = rowBuf[0][y2][x1+x2];
-	    pCb = rowBuf[1][y2][x1+x2] - 128;
-	    pCr = rowBuf[2][y2][x1+x2] - 128;
-	    pR = ((pY << 16) + dctCrToR * pCr + 32768) >> 16;
-	    rowBuf[0][y2][x1+x2] = dctClip[dctClipOffset + pR];
-	    pG = ((pY << 16) + dctCbToG * pCb + dctCrToG * pCr + 32768) >> 16;
-	    rowBuf[1][y2][x1+x2] = dctClip[dctClipOffset + pG];
-	    pB = ((pY << 16) + dctCbToB * pCb + 32768) >> 16;
-	    rowBuf[2][y2][x1+x2] = dctClip[dctClipOffset + pB];
-	  }
-	}
-      // convert YCbCrK to CMYK (K is passed through unchanged)
-      } else if (numComps == 4) {
-	for (y2 = 0; y2 < mcuHeight; ++y2) {
-	  for (x2 = 0; x2 < mcuWidth; ++x2) {
-	    pY = rowBuf[0][y2][x1+x2];
-	    pCb = rowBuf[1][y2][x1+x2] - 128;
-	    pCr = rowBuf[2][y2][x1+x2] - 128;
-	    pR = ((pY << 16) + dctCrToR * pCr + 32768) >> 16;
-	    rowBuf[0][y2][x1+x2] = 255 - dctClip[dctClipOffset + pR];
-	    pG = ((pY << 16) + dctCbToG * pCb + dctCrToG * pCr + 32768) >> 16;
-	    rowBuf[1][y2][x1+x2] = 255 - dctClip[dctClipOffset + pG];
-	    pB = ((pY << 16) + dctCbToB * pCb + 32768) >> 16;
-	    rowBuf[2][y2][x1+x2] = 255 - dctClip[dctClipOffset + pB];
-	  }
-	}
+  // color space conversion
+  if (colorXform) {
+    // convert YCbCr to RGB
+    if (numComps == 3) {
+      for (i = 0, p1 = rowBuf; i < width * mcuHeight; ++i, p1 += 3) {
+	pY = p1[0];
+	pCb = p1[1] - 128;
+	pCr = p1[2] - 128;
+	pR = ((pY << 16) + dctCrToR * pCr + 32768) >> 16;
+	p1[0] = dctClip(pR);
+	pG = ((pY << 16) + dctCbToG * pCb + dctCrToG * pCr + 32768) >> 16;
+	p1[1] = dctClip(pG);
+	pB = ((pY << 16) + dctCbToB * pCb + 32768) >> 16;
+	p1[2] = dctClip(pB);
+      }
+    // convert YCbCrK to CMYK (K is passed through unchanged)
+    } else if (numComps == 4) {
+      for (i = 0, p1 = rowBuf; i < width * mcuHeight; ++i, p1 += 4) {
+	pY = p1[0];
+	pCb = p1[1] - 128;
+	pCr = p1[2] - 128;
+	pR = ((pY << 16) + dctCrToR * pCr + 32768) >> 16;
+	p1[0] = 255 - dctClip(pR);
+	pG = ((pY << 16) + dctCbToG * pCb + dctCrToG * pCr + 32768) >> 16;
+	p1[1] = 255 - dctClip(pG);
+	pB = ((pY << 16) + dctCbToB * pCb + 32768) >> 16;
+	p1[2] = 255 - dctClip(pB);
       }
     }
   }
+
+  rowBufPtr = rowBuf;
+  if (y + mcuHeight <= height) {
+    rowBufEnd = rowBuf + numComps * width * mcuHeight;
+  } else {
+    rowBufEnd = rowBuf + numComps * width * (height - y);
+  }
+
   return gTrue;
 }
 
@@ -2609,7 +2646,7 @@ GBool DCTStream::readDataUnit(DCTHuffTable *dcHuffTable,
   return gTrue;
 }
 
-// Read one data unit from a sequential JPEG stream.
+// Read one data unit from a progressive JPEG stream.
 GBool DCTStream::readProgressiveDataUnit(DCTHuffTable *dcHuffTable,
 					 DCTHuffTable *acHuffTable,
 					 int *prevDC, int data[64]) {
@@ -2635,7 +2672,13 @@ GBool DCTStream::readProgressiveDataUnit(DCTHuffTable *dcHuffTable,
       if ((bit = readBit()) == 9999) {
 	return gFalse;
       }
-      data[0] += bit << scanInfo.al;
+      if (bit) {
+	if (data[0] >= 0) {
+	  data[0] += 1 << scanInfo.al;
+	} else {
+	  data[0] -= 1 << scanInfo.al;
+	}
+      }
     }
     ++i;
   }
@@ -2652,7 +2695,11 @@ GBool DCTStream::readProgressiveDataUnit(DCTHuffTable *dcHuffTable,
 	  return gFalse;
 	}
 	if (bit) {
-	  data[j] += 1 << scanInfo.al;
+	  if (data[j] >= 0) {
+	    data[j] += 1 << scanInfo.al;
+	  } else {
+	    data[j] -= 1 << scanInfo.al;
+	  }
 	}
       }
     }
@@ -2678,7 +2725,11 @@ GBool DCTStream::readProgressiveDataUnit(DCTHuffTable *dcHuffTable,
 	    return gFalse;
 	  }
 	  if (bit) {
-	    data[j] += 1 << scanInfo.al;
+	    if (data[j] >= 0) {
+	      data[j] += 1 << scanInfo.al;
+	    } else {
+	      data[j] -= 1 << scanInfo.al;
+	    }
 	  }
 	}
       }
@@ -2701,7 +2752,11 @@ GBool DCTStream::readProgressiveDataUnit(DCTHuffTable *dcHuffTable,
 	    return gFalse;
 	  }
 	  if (bit) {
-	    data[j] += 1 << scanInfo.al;
+	    if (data[j] >= 0) {
+	      data[j] += 1 << scanInfo.al;
+	    } else {
+	      data[j] -= 1 << scanInfo.al;
+	    }
 	  }
 	}
       }
@@ -2723,7 +2778,11 @@ GBool DCTStream::readProgressiveDataUnit(DCTHuffTable *dcHuffTable,
 	    return gFalse;
 	  }
 	  if (bit) {
-	    data[j] += 1 << scanInfo.al;
+	    if (data[j] >= 0) {
+	      data[j] += 1 << scanInfo.al;
+	    } else {
+	      data[j] -= 1 << scanInfo.al;
+	    }
 	  }
 	  j = dctZigZag[i++];
 	}
@@ -2837,12 +2896,12 @@ void DCTStream::decodeImage() {
 	      pCb = *p1 - 128;
 	      pCr = *p2 - 128;
 	      pR = ((pY << 16) + dctCrToR * pCr + 32768) >> 16;
-	      *p0++ = dctClip[dctClipOffset + pR];
+	      *p0++ = dctClip(pR);
 	      pG = ((pY << 16) + dctCbToG * pCb + dctCrToG * pCr +
 		    32768) >> 16;
-	      *p1++ = dctClip[dctClipOffset + pG];
+	      *p1++ = dctClip(pG);
 	      pB = ((pY << 16) + dctCbToB * pCb + 32768) >> 16;
-	      *p2++ = dctClip[dctClipOffset + pB];
+	      *p2++ = dctClip(pB);
 	    }
 	  }
 	// convert YCbCrK to CMYK (K is passed through unchanged)
@@ -2856,12 +2915,12 @@ void DCTStream::decodeImage() {
 	      pCb = *p1 - 128;
 	      pCr = *p2 - 128;
 	      pR = ((pY << 16) + dctCrToR * pCr + 32768) >> 16;
-	      *p0++ = 255 - dctClip[dctClipOffset + pR];
+	      *p0++ = 255 - dctClip(pR);
 	      pG = ((pY << 16) + dctCbToG * pCb + dctCrToG * pCr +
 		    32768) >> 16;
-	      *p1++ = 255 - dctClip[dctClipOffset + pG];
+	      *p1++ = 255 - dctClip(pG);
 	      pB = ((pY << 16) + dctCbToB * pCb + 32768) >> 16;
-	      *p2++ = 255 - dctClip[dctClipOffset + pB];
+	      *p2++ = 255 - dctClip(pB);
 	    }
 	  }
 	}
@@ -2880,71 +2939,76 @@ void DCTStream::decodeImage() {
 // paper.
 void DCTStream::transformDataUnit(Gushort *quantTable,
 				  int dataIn[64], Guchar dataOut[64]) {
-  int v0, v1, v2, v3, v4, v5, v6, v7, t;
+  int v0, v1, v2, v3, v4, v5, v6, v7, t0, t1, t2;
   int *p;
+  Gushort *q;
   int i;
 
-  // dequant
-  for (i = 0; i < 64; ++i) {
-    dataIn[i] *= quantTable[i];
-  }
-
-  // inverse DCT on rows
+  // dequant; inverse DCT on rows
   for (i = 0; i < 64; i += 8) {
     p = dataIn + i;
+    q = quantTable + i;
 
     // check for all-zero AC coefficients
     if (p[1] == 0 && p[2] == 0 && p[3] == 0 &&
 	p[4] == 0 && p[5] == 0 && p[6] == 0 && p[7] == 0) {
-      t = (dctSqrt2 * p[0] + 512) >> 10;
-      p[0] = t;
-      p[1] = t;
-      p[2] = t;
-      p[3] = t;
-      p[4] = t;
-      p[5] = t;
-      p[6] = t;
-      p[7] = t;
+      t0 = p[0] * q[0];
+      p[0] = t0;
+      p[1] = t0;
+      p[2] = t0;
+      p[3] = t0;
+      p[4] = t0;
+      p[5] = t0;
+      p[6] = t0;
+      p[7] = t0;
       continue;
     }
 
     // stage 4
-    v0 = (dctSqrt2 * p[0] + 128) >> 8;
-    v1 = (dctSqrt2 * p[4] + 128) >> 8;
-    v2 = p[2];
-    v3 = p[6];
-    v4 = (dctSqrt1d2 * (p[1] - p[7]) + 128) >> 8;
-    v7 = (dctSqrt1d2 * (p[1] + p[7]) + 128) >> 8;
-    v5 = p[3] << 4;
-    v6 = p[5] << 4;
+    v0 = p[0] * q[0];
+    v1 = p[4] * q[4];
+    v2 = p[2] * q[2];
+    v3 = p[6] * q[6];
+    t0 = p[1] * q[1];
+    t1 = p[7] * q[7];
+    v4 = t0 - t1;
+    v7 = t0 + t1;
+    v5 = (dctSqrt2 * p[3] * q[3]) >> 12;
+    v6 = (dctSqrt2 * p[5] * q[5]) >> 12;
 
     // stage 3
-    t = (v0 - v1+ 1) >> 1;
-    v0 = (v0 + v1 + 1) >> 1;
-    v1 = t;
-    t = (v2 * dctSin6 + v3 * dctCos6 + 128) >> 8;
-    v2 = (v2 * dctCos6 - v3 * dctSin6 + 128) >> 8;
-    v3 = t;
-    t = (v4 - v6 + 1) >> 1;
-    v4 = (v4 + v6 + 1) >> 1;
-    v6 = t;
-    t = (v7 + v5 + 1) >> 1;
-    v5 = (v7 - v5 + 1) >> 1;
-    v7 = t;
+    t0 = v0 - v1;
+    v0 = v0 + v1;
+    v1 = t0;
+    t0 = dctSqrt2Cos6 * (v2 + v3);
+    t1 = dctSqrt2Cos6PSin6 * v3;
+    t2 = dctSqrt2Sin6MCos6 * v2;
+    v2 = (t0 - t1) >> 12;
+    v3 = (t0 + t2) >> 12;
+    t0 = v4 - v6;
+    v4 = v4 + v6;
+    v6 = t0;
+    t0 = v7 + v5;
+    v5 = v7 - v5;
+    v7 = t0;
 
     // stage 2
-    t = (v0 - v3 + 1) >> 1;
-    v0 = (v0 + v3 + 1) >> 1;
-    v3 = t;
-    t = (v1 - v2 + 1) >> 1;
-    v1 = (v1 + v2 + 1) >> 1;
-    v2 = t;
-    t = (v4 * dctSin3 + v7 * dctCos3 + 2048) >> 12;
-    v4 = (v4 * dctCos3 - v7 * dctSin3 + 2048) >> 12;
-    v7 = t;
-    t = (v5 * dctSin1 + v6 * dctCos1 + 2048) >> 12;
-    v5 = (v5 * dctCos1 - v6 * dctSin1 + 2048) >> 12;
-    v6 = t;
+    t0 = v0 - v3;
+    v0 = v0 + v3;
+    v3 = t0;
+    t0 = v1 - v2;
+    v1 = v1 + v2;
+    v2 = t0;
+    t0 = dctCos3 * (v4 + v7);
+    t1 = dctCos3PSin3 * v7;
+    t2 = dctSin3MCos3 * v4;
+    v4 = (t0 - t1) >> 12;
+    v7 = (t0 + t2) >> 12;
+    t0 = dctCos1 * (v5 + v6);
+    t1 = dctCos1PSin1 * v6;
+    t2 = dctSin1MCos1 * v5;
+    v5 = (t0 - t1) >> 12;
+    v6 = (t0 + t2) >> 12;
 
     // stage 1
     p[0] = v0 + v7;
@@ -2964,55 +3028,60 @@ void DCTStream::transformDataUnit(Gushort *quantTable,
     // check for all-zero AC coefficients
     if (p[1*8] == 0 && p[2*8] == 0 && p[3*8] == 0 &&
 	p[4*8] == 0 && p[5*8] == 0 && p[6*8] == 0 && p[7*8] == 0) {
-      t = (dctSqrt2 * dataIn[i+0] + 8192) >> 14;
-      p[0*8] = t;
-      p[1*8] = t;
-      p[2*8] = t;
-      p[3*8] = t;
-      p[4*8] = t;
-      p[5*8] = t;
-      p[6*8] = t;
-      p[7*8] = t;
+      t0 = p[0*8];
+      p[1*8] = t0;
+      p[2*8] = t0;
+      p[3*8] = t0;
+      p[4*8] = t0;
+      p[5*8] = t0;
+      p[6*8] = t0;
+      p[7*8] = t0;
       continue;
     }
 
     // stage 4
-    v0 = (dctSqrt2 * p[0*8] + 2048) >> 12;
-    v1 = (dctSqrt2 * p[4*8] + 2048) >> 12;
+    v0 = p[0*8];
+    v1 = p[4*8];
     v2 = p[2*8];
     v3 = p[6*8];
-    v4 = (dctSqrt1d2 * (p[1*8] - p[7*8]) + 2048) >> 12;
-    v7 = (dctSqrt1d2 * (p[1*8] + p[7*8]) + 2048) >> 12;
-    v5 = p[3*8];
-    v6 = p[5*8];
+    v4 = p[1*8] - p[7*8];
+    v7 = p[1*8] + p[7*8];
+    v5 = (dctSqrt2 * p[3*8]) >> 12;
+    v6 = (dctSqrt2 * p[5*8]) >> 12;
 
     // stage 3
-    t = (v0 - v1 + 1) >> 1;
-    v0 = (v0 + v1 + 1) >> 1;
-    v1 = t;
-    t = (v2 * dctSin6 + v3 * dctCos6 + 2048) >> 12;
-    v2 = (v2 * dctCos6 - v3 * dctSin6 + 2048) >> 12;
-    v3 = t;
-    t = (v4 - v6 + 1) >> 1;
-    v4 = (v4 + v6 + 1) >> 1;
-    v6 = t;
-    t = (v7 + v5 + 1) >> 1;
-    v5 = (v7 - v5 + 1) >> 1;
-    v7 = t;
+    t0 = v0 - v1;
+    v0 = v0 + v1;
+    v1 = t0;
+    t0 = dctSqrt2Cos6 * (v2 + v3);
+    t1 = dctSqrt2Cos6PSin6 * v3;
+    t2 = dctSqrt2Sin6MCos6 * v2;
+    v2 = (t0 - t1) >> 12;
+    v3 = (t0 + t2) >> 12;
+    t0 = v4 - v6;
+    v4 = v4 + v6;
+    v6 = t0;
+    t0 = v7 + v5;
+    v5 = v7 - v5;
+    v7 = t0;
 
     // stage 2
-    t = (v0 - v3 + 1) >> 1;
-    v0 = (v0 + v3 + 1) >> 1;
-    v3 = t;
-    t = (v1 - v2 + 1) >> 1;
-    v1 = (v1 + v2 + 1) >> 1;
-    v2 = t;
-    t = (v4 * dctSin3 + v7 * dctCos3 + 2048) >> 12;
-    v4 = (v4 * dctCos3 - v7 * dctSin3 + 2048) >> 12;
-    v7 = t;
-    t = (v5 * dctSin1 + v6 * dctCos1 + 2048) >> 12;
-    v5 = (v5 * dctCos1 - v6 * dctSin1 + 2048) >> 12;
-    v6 = t;
+    t0 = v0 - v3;
+    v0 = v0 + v3;
+    v3 = t0;
+    t0 = v1 - v2;
+    v1 = v1 + v2;
+    v2 = t0;
+    t0 = dctCos3 * (v4 + v7);
+    t1 = dctCos3PSin3 * v7;
+    t2 = dctSin3MCos3 * v4;
+    v4 = (t0 - t1) >> 12;
+    v7 = (t0 + t2) >> 12;
+    t0 = dctCos1 * (v5 + v6);
+    t1 = dctCos1PSin1 * v6;
+    t2 = dctSin1MCos1 * v5;
+    v5 = (t0 - t1) >> 12;
+    v6 = (t0 + t2) >> 12;
 
     // stage 1
     p[0*8] = v0 + v7;
@@ -3027,7 +3096,7 @@ void DCTStream::transformDataUnit(Gushort *quantTable,
 
   // convert to 8-bit integers
   for (i = 0; i < 64; ++i) {
-    dataOut[i] = dctClip[dctClipOffset + 128 + ((dataIn[i] + 8) >> 4)];
+    dataOut[i] = dctClip(128 + (dataIn[i] >> 3));
   }
 }
 
@@ -3103,7 +3172,6 @@ GBool DCTStream::readHeader() {
   GBool doScan;
   int n;
   int c = 0;
-  int i;
 
   // read headers
   doScan = gFalse;
@@ -3163,9 +3231,7 @@ GBool DCTStream::readHeader() {
       // skip APPn / COM / etc.
       if (c >= 0xe0) {
 	n = read16() - 2;
-	for (i = 0; i < n; ++i) {
-	  str->getChar();
-	}
+	str->discardChars(n);
       } else {
 	error(errSyntaxError, getPos(), "Unknown DCT marker <{0:02x}>", c);
 	return gFalse;
@@ -3178,12 +3244,11 @@ GBool DCTStream::readHeader() {
 }
 
 GBool DCTStream::readBaselineSOF() {
-  int length;
   int prec;
   int i;
   int c;
 
-  length = read16();
+  read16(); // length
   prec = str->getChar();
   height = read16();
   width = read16();
@@ -3218,12 +3283,11 @@ GBool DCTStream::readBaselineSOF() {
 }
 
 GBool DCTStream::readProgressiveSOF() {
-  int length;
   int prec;
   int i;
   int c;
 
-  length = read16();
+  read16(); // length
   prec = str->getChar();
   height = read16();
   width = read16();
@@ -4194,6 +4258,9 @@ void FlateStream::reset() {
   eof = gTrue;
 
   str->reset();
+  if (pred) {
+    pred->reset();
+  }
 
   // read header
   //~ need to look at window size?
@@ -4274,10 +4341,10 @@ int FlateStream::getBlock(char *blk, int size) {
 
   n = 0;
   while (n < size) {
-    if (endOfBlock && eof) {
-      break;
-    }
     if (remain == 0) {
+      if (endOfBlock && eof) {
+	break;
+      }
       readSome();
     }
     while (remain && n < size) {
@@ -4968,4 +5035,150 @@ GBool RunLengthEncoder::fillBuf() {
   }
   bufPtr = buf;
   return gTrue;
+}
+
+//------------------------------------------------------------------------
+// LZWEncoder
+//------------------------------------------------------------------------
+
+LZWEncoder::LZWEncoder(Stream *strA):
+  FilterStream(strA)
+{
+  inBufLen = 0;
+  outBufLen = 0;
+}
+
+LZWEncoder::~LZWEncoder() {
+  if (str->isEncoder()) {
+    delete str;
+  }
+}
+
+void LZWEncoder::reset() {
+  int i;
+
+  str->reset();
+
+  // initialize code table
+  for (i = 0; i < 256; ++i) {
+    table[i].byte = i;
+    table[i].next = NULL;
+    table[i].children = NULL;
+  }
+  nextSeq = 258;
+  codeLen = 9;
+
+  // initialize input buffer
+  inBufLen = str->getBlock((char *)inBuf, sizeof(inBuf));
+
+  // initialize output buffer with a clear-table code
+  outBuf = 256;
+  outBufLen = 9;
+  needEOD = gFalse;
+}
+
+int LZWEncoder::getChar() {
+  int ret;
+
+  if (inBufLen == 0 && !needEOD && outBufLen == 0) {
+    return EOF;
+  }
+  if (outBufLen < 8 && (inBufLen > 0 || needEOD)) {
+    fillBuf();
+  }
+  if (outBufLen >= 8) {
+    ret = (outBuf >> (outBufLen - 8)) & 0xff;
+    outBufLen -= 8;
+  } else {
+    ret = (outBuf << (8 - outBufLen)) & 0xff;
+    outBufLen = 0;
+  }
+  return ret;
+}
+
+int LZWEncoder::lookChar() {
+  if (inBufLen == 0 && !needEOD && outBufLen == 0) {
+    return EOF;
+  }
+  if (outBufLen < 8 && (inBufLen > 0 || needEOD)) {
+    fillBuf();
+  }
+  if (outBufLen >= 8) {
+    return (outBuf >> (outBufLen - 8)) & 0xff;
+  } else {
+    return (outBuf << (8 - outBufLen)) & 0xff;
+  }
+}
+
+// On input, outBufLen < 8.
+// This function generates, at most, 2 12-bit codes
+//   --> outBufLen < 8 + 12 + 12 = 32
+void LZWEncoder::fillBuf() {
+  LZWEncoderNode *p0, *p1;
+  int seqLen, code, i;
+
+  if (needEOD) {
+    outBuf = (outBuf << codeLen) | 257;
+    outBufLen += codeLen;
+    needEOD = gFalse;
+    return;
+  }
+
+  // find longest matching sequence (if any)
+  p0 = table + inBuf[0];
+  seqLen = 1;
+  while (inBufLen > seqLen) {
+    for (p1 = p0->children; p1; p1 = p1->next) {
+      if (p1->byte == inBuf[seqLen]) {
+	break;
+      }
+    }
+    if (!p1) {
+      break;
+    }
+    p0 = p1;
+    ++seqLen;
+  }
+  code = (int)(p0 - table);
+
+  // generate an output code
+  outBuf = (outBuf << codeLen) | code;
+  outBufLen += codeLen;
+
+  // update the table
+  table[nextSeq].byte = seqLen < inBufLen ? inBuf[seqLen] : 0;
+  table[nextSeq].children = NULL;
+  if (table[code].children) {
+    table[nextSeq].next = table[code].children;
+  } else {
+    table[nextSeq].next = NULL;
+  }
+  table[code].children = table + nextSeq;
+  ++nextSeq;
+
+  // update the input buffer
+  memmove(inBuf, inBuf + seqLen, inBufLen - seqLen);
+  inBufLen -= seqLen;
+  inBufLen += str->getBlock((char *)inBuf + inBufLen,
+			    sizeof(inBuf) - inBufLen);
+
+  // increment codeLen; generate clear-table code
+  if (nextSeq == (1 << codeLen)) {
+    ++codeLen;
+    if (codeLen == 13) {
+      outBuf = (outBuf << 12) | 256;
+      outBufLen += 12;
+      for (i = 0; i < 256; ++i) {
+	table[i].next = NULL;
+	table[i].children = NULL;
+      }
+      nextSeq = 258;
+      codeLen = 9;
+    }
+  }
+
+  // generate EOD next time
+  if (inBufLen == 0) {
+    needEOD = gTrue;
+  }
 }

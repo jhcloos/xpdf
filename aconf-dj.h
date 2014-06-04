@@ -55,11 +55,6 @@
 #undef HAVE_X11_XPM_H
 
 /*
- * This is defined if using t1lib.
- */
-#undef HAVE_T1LIB_H
-
-/*
  * One of these is defined if using FreeType (version 1 or 2).
  */
 #undef HAVE_FREETYPE_H

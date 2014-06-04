@@ -100,8 +100,11 @@ public:
 				//   (if locType == gfxFontLocExternal)
 				// PS font name
 				//   (if locType == gfxFontLocResident)
-  int fontNum;			// for TrueType collections
+  int fontNum;			// for TrueType collections and Mac dfonts
 				//   (if locType == gfxFontLocExternal)
+  double oblique;		// sheer factor to oblique this font
+				//   (used when substituting a plain
+				//   font for an oblique font)
   GString *encoding;		// PS font encoding, only for 16-bit fonts
 				//   (if locType == gfxFontLocResident)
   int wMode;			// writing mode, only for 16-bit fonts
@@ -207,7 +210,8 @@ protected:
   void readFontDescriptor(XRef *xref, Dict *fontDict);
   CharCodeToUnicode *readToUnicodeCMap(Dict *fontDict, int nBits,
 				       CharCodeToUnicode *ctu);
-  static GfxFontLoc *getExternalFont(GString *path, GBool cid);
+  static GfxFontLoc *getExternalFont(GString *path, int fontNum,
+				     double oblique, GBool cid);
 
   GString *tag;			// PDF font tag
   Ref id;			// reference (used as unique ID)
@@ -267,6 +271,7 @@ public:
 
   // Return the Type 3 CharProc for the character associated with <code>.
   Object *getCharProc(int code, Object *proc);
+  Object *getCharProcNF(int code, Object *proc);
 
   // Return the Type 3 Resources dictionary, or NULL if none.
   Dict *getResources();
@@ -347,6 +352,7 @@ public:
 
   // Get the specified font.
   GfxFont *lookup(char *tag);
+  GfxFont *lookupByRef(Ref ref);
 
   // Iterative access.
   int getNumFonts() { return numFonts; }

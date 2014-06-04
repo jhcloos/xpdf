@@ -2,6 +2,8 @@
 //
 // SplashPath.h
 //
+// Copyright 2003-2013 Glyph & Cog, LLC
+//
 //========================================================================
 
 #ifndef SPLASHPATH_H
@@ -94,7 +96,7 @@ public:
 
   // Get the points on the path.
   int getLength() { return length; }
-  void getPoint(int i, double *x, double *y, Guchar *f)
+  void getPoint(int i, SplashCoord *x, SplashCoord *y, Guchar *f)
     { *x = pts[i].x; *y = pts[i].y; *f = flags[i]; }
 
   // Get the current point.

@@ -2,6 +2,8 @@
 //
 // SplashFontFile.h
 //
+// Copyright 2003-2013 Glyph & Cog, LLC
+//
 //========================================================================
 
 #ifndef SPLASHFONTFILE_H
@@ -46,12 +48,21 @@ public:
 
 protected:
 
-  SplashFontFile(SplashFontFileID *idA, char *fileNameA,
-		 GBool deleteFileA);
+  SplashFontFile(SplashFontFileID *idA,
+#if LOAD_FONTS_FROM_MEM
+		 GString *fontBufA
+#else
+		 char *fileNameA, GBool deleteFileA
+#endif
+		 );
 
   SplashFontFileID *id;
+#if LOAD_FONTS_FROM_MEM
+  GString *fontBuf;
+#else
   GString *fileName;
   GBool deleteFile;
+#endif
   int refCnt;
 
   friend class SplashFontEngine;

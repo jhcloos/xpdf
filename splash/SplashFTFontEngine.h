@@ -2,6 +2,8 @@
 //
 // SplashFTFontEngine.h
 //
+// Copyright 2003-2013 Glyph & Cog, LLC
+//
 //========================================================================
 
 #ifndef SPLASHFTFONTENGINE_H
@@ -18,6 +20,7 @@
 #include <ft2build.h>
 #include FT_FREETYPE_H
 #include "gtypes.h"
+class GString;
 
 class SplashFontFile;
 class SplashFontFileID;
@@ -34,19 +37,48 @@ public:
   ~SplashFTFontEngine();
 
   // Load fonts.
-  SplashFontFile *loadType1Font(SplashFontFileID *idA, char *fileName,
-				GBool deleteFile, const char **enc);
-  SplashFontFile *loadType1CFont(SplashFontFileID *idA, char *fileName,
-				 GBool deleteFile, const char **enc);
-  SplashFontFile *loadOpenTypeT1CFont(SplashFontFileID *idA, char *fileName,
-				      GBool deleteFile, const char **enc);
-  SplashFontFile *loadCIDFont(SplashFontFileID *idA, char *fileName,
-			      GBool deleteFile);
-  SplashFontFile *loadOpenTypeCFFFont(SplashFontFileID *idA, char *fileName,
-				      GBool deleteFile,
+  SplashFontFile *loadType1Font(SplashFontFileID *idA,
+#if LOAD_FONTS_FROM_MEM
+				GString *fontBuf,
+#else
+				char *fileName, GBool deleteFile,
+#endif
+				const char **enc);
+  SplashFontFile *loadType1CFont(SplashFontFileID *idA,
+#if LOAD_FONTS_FROM_MEM
+				 GString *fontBuf,
+#else
+				 char *fileName, GBool deleteFile,
+#endif
+				 const char **enc);
+  SplashFontFile *loadOpenTypeT1CFont(SplashFontFileID *idA,
+#if LOAD_FONTS_FROM_MEM
+				      GString *fontBuf,
+#else
+				      char *fileName, GBool deleteFile,
+#endif
+				      const char **enc);
+  SplashFontFile *loadCIDFont(SplashFontFileID *idA,
+#if LOAD_FONTS_FROM_MEM
+			      GString *fontBuf
+#else
+			      char *fileName, GBool deleteFile
+#endif
+			      );
+  SplashFontFile *loadOpenTypeCFFFont(SplashFontFileID *idA,
+#if LOAD_FONTS_FROM_MEM
+				      GString *fontBuf,
+#else
+				      char *fileName, GBool deleteFile,
+#endif
 				      int *codeToGID, int codeToGIDLen);
-  SplashFontFile *loadTrueTypeFont(SplashFontFileID *idA, char *fileName,
-				   int fontNum, GBool deleteFile,
+  SplashFontFile *loadTrueTypeFont(SplashFontFileID *idA,
+#if LOAD_FONTS_FROM_MEM
+				   GString *fontBuf,
+#else
+				   char *fileName, GBool deleteFile,
+#endif
+				   int fontNum,
 				   int *codeToGID, int codeToGIDLen);
 
 private:

@@ -100,7 +100,11 @@ public:
 //------------------------------------------------------------------------
 
 struct PDFHistory {
+#ifdef _WIN32
+  wchar_t *fileName;
+#else
   GString *fileName;
+#endif
   int page;
 };
 
@@ -125,7 +129,7 @@ public:
   virtual int loadFile(GString *fileName, GString *ownerPassword = NULL,
 		       GString *userPassword = NULL);
 
-#ifdef WIN32
+#ifdef _WIN32
   // Load a new file.  Returns pdfOk or error code.
   virtual int loadFile(wchar_t *fileName, int fileNameLen,
 		       GString *ownerPassword = NULL,

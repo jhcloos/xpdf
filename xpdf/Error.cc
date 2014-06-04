@@ -2,7 +2,7 @@
 //
 // Error.cc
 //
-// Copyright 1996-2003 Glyph & Cog, LLC
+// Copyright 1996-2013 Glyph & Cog, LLC
 //
 //========================================================================
 
@@ -41,9 +41,12 @@ void setErrorCallback(void (*cbk)(void *data, ErrorCategory category,
   errorCbkData = data;
 }
 
-void CDECL error(ErrorCategory category, int pos, const char *msg, ...) {
+void CDECL error(ErrorCategory category, GFileOffset pos,
+		 const char *msg, ...) {
   va_list args;
-  GString *s;
+  GString *s, *sanitized;
+  char c;
+  int i;
 
   // NB: this can be called before the globalParams object is created
   if (!errorCbk && globalParams && globalParams->getErrQuiet()) {
@@ -52,17 +55,32 @@ void CDECL error(ErrorCategory category, int pos, const char *msg, ...) {
   va_start(args, msg);
   s = GString::formatv(msg, args);
   va_end(args);
+
+  // remove non-printable characters, just in case they might cause
+  // problems for the terminal program
+  sanitized = new GString();
+  for (i = 0; i < s->getLength(); ++i) {
+    c = s->getChar(i);
+    if (c >= 0x20 && c <= 0x7e) {
+      sanitized->append(c);
+    } else {
+      sanitized->appendf("<{0:02x}>", c & 0xff);
+    }
+  }
+
   if (errorCbk) {
-    (*errorCbk)(errorCbkData, category, pos, s->getCString());
+    (*errorCbk)(errorCbkData, category, (int)pos, sanitized->getCString());
   } else {
     if (pos >= 0) {
       fprintf(stderr, "%s (%d): %s\n",
-	      errorCategoryNames[category], pos, s->getCString());
+	      errorCategoryNames[category], (int)pos, sanitized->getCString());
     } else {
       fprintf(stderr, "%s: %s\n",
-	      errorCategoryNames[category], s->getCString());
+	      errorCategoryNames[category], sanitized->getCString());
     }
     fflush(stderr);
   }
+
   delete s;
+  delete sanitized;
 }

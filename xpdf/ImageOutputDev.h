@@ -62,7 +62,7 @@ public:
   virtual GBool useDrawChar() { return gFalse; }
 
   //----- path painting
-  virtual void tilingPatternFill(GfxState *state, Gfx *gfx, Object *str,
+  virtual void tilingPatternFill(GfxState *state, Gfx *gfx, Object *strRef,
 				 int paintType, Dict *resDict,
 				 double *mat, double *bbox,
 				 int x0, int y0, int x1, int y1,
@@ -71,10 +71,22 @@ public:
   //----- image drawing
   virtual void drawImageMask(GfxState *state, Object *ref, Stream *str,
 			     int width, int height, GBool invert,
-			     GBool inlineImg);
+			     GBool inlineImg, GBool interpolate);
   virtual void drawImage(GfxState *state, Object *ref, Stream *str,
 			 int width, int height, GfxImageColorMap *colorMap,
-			 int *maskColors, GBool inlineImg);
+			 int *maskColors, GBool inlineImg, GBool interpolate);
+  virtual void drawMaskedImage(GfxState *state, Object *ref, Stream *str,
+			       int width, int height,
+			       GfxImageColorMap *colorMap,
+			       Stream *maskStr, int maskWidth, int maskHeight,
+			       GBool maskInvert, GBool interpolate);
+  virtual void drawSoftMaskedImage(GfxState *state, Object *ref, Stream *str,
+				   int width, int height,
+				   GfxImageColorMap *colorMap,
+				   Stream *maskStr,
+				   int maskWidth, int maskHeight,
+				   GfxImageColorMap *maskColorMap,
+				   GBool interpolate);
 
 private:
 

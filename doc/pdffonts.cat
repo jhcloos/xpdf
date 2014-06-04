@@ -3,7 +3,7 @@ pdffonts(1)                                                        pdffonts(1)
 
 
 NAME
-       pdffonts - Portable Document Format (PDF) font analyzer (version 3.03)
+       pdffonts - Portable Document Format (PDF) font analyzer (version 3.04)
 
 SYNOPSIS
        pdffonts [options] [PDF-file]
@@ -29,6 +29,9 @@ DESCRIPTION
 
        object ID
               the font dictionary object ID (number and generation)
+
+       location
+              the font location (see the -loc and -locPS options).
 
        PDF files can contain the following types of fonts:
 
@@ -58,6 +61,14 @@ OPTIONS
 
        -f number
               Specifies the first page to analyze.
+
+       -loc   Shows  additional  information  on the location of the font that
+              will be used  when  the  PDF  file  is  rasterized  (with  xpdf,
+              pdftoppm, etc.).
+
+       -locPS Shows  additional  information  on the location of the font that
+              will be used when the PDF file is converted to PostScript  (with
+              pdftops).
 
        -l number
               Specifies the last page to analyze.
@@ -91,14 +102,14 @@ EXIT CODES
        99     Other error.
 
 AUTHOR
-       The pdffonts software and documentation are copyright 1996-2011 Glyph &
+       The pdffonts software and documentation are copyright 1996-2014 Glyph &
        Cog, LLC.
 
 SEE ALSO
-       xpdf(1),   pdftops(1),    pdftotext(1),    pdfinfo(1),    pdfdetach(1),
-       pdftoppm(1), pdfimages(1), xpdfrc(5)
+       xpdf(1), pdftops(1),  pdftotext(1),  pdftohtml(1),  pdfinfo(1),  pdfde-
+       tach(1), pdftoppm(1), pdftopng(1), pdfimages(1), xpdfrc(5)
        http://www.foolabs.com/xpdf/
 
 
 
-                                15 August 2011                     pdffonts(1)
+                                  28 May 2014                      pdffonts(1)

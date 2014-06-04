@@ -275,10 +275,11 @@ static const char *macGlyphNames[258] = {
 // FoFiTrueType
 //------------------------------------------------------------------------
 
-FoFiTrueType *FoFiTrueType::make(char *fileA, int lenA) {
+FoFiTrueType *FoFiTrueType::make(char *fileA, int lenA, int fontNum,
+				 GBool allowHeadlessCFF) {
   FoFiTrueType *ff;
 
-  ff = new FoFiTrueType(fileA, lenA, gFalse);
+  ff = new FoFiTrueType(fileA, lenA, gFalse, fontNum, gFalse, allowHeadlessCFF);
   if (!ff->parsedOk) {
     delete ff;
     return NULL;
@@ -286,15 +287,20 @@ FoFiTrueType *FoFiTrueType::make(char *fileA, int lenA) {
   return ff;
 }
 
-FoFiTrueType *FoFiTrueType::load(char *fileName) {
+FoFiTrueType *FoFiTrueType::load(char *fileName, int fontNum,
+				 GBool allowHeadlessCFF) {
   FoFiTrueType *ff;
   char *fileA;
-  int lenA;
+  int lenA, n;
+  GBool isDfontA;
 
   if (!(fileA = FoFiBase::readFile(fileName, &lenA))) {
     return NULL;
   }
-  ff = new FoFiTrueType(fileA, lenA, gTrue);
+  n = (int)strlen(fileName);
+  isDfontA = n >= 6 && !strcmp(fileName + n - 6, ".dfont");
+  ff = new FoFiTrueType(fileA, lenA, gTrue, fontNum, isDfontA,
+			allowHeadlessCFF);
   if (!ff->parsedOk) {
     delete ff;
     return NULL;
@@ -302,7 +308,9 @@ FoFiTrueType *FoFiTrueType::load(char *fileName) {
   return ff;
 }
 
-FoFiTrueType::FoFiTrueType(char *fileA, int lenA, GBool freeFileDataA):
+FoFiTrueType::FoFiTrueType(char *fileA, int lenA, GBool freeFileDataA,
+			   int fontNum, GBool isDfontA,
+			   GBool allowHeadlessCFF):
   FoFiBase(fileA, lenA, freeFileDataA)
 {
   tables = NULL;
@@ -310,9 +318,10 @@ FoFiTrueType::FoFiTrueType(char *fileA, int lenA, GBool freeFileDataA):
   cmaps = NULL;
   nCmaps = 0;
   nameToGID = NULL;
+  isDfont = isDfontA;
   parsedOk = gFalse;
 
-  parse();
+  parse(fontNum, allowHeadlessCFF);
 }
 
 FoFiTrueType::~FoFiTrueType() {
@@ -363,7 +372,26 @@ int FoFiTrueType::mapCodeToGID(int i, int c) {
     if (c < 0 || c >= cmaps[i].len - 6) {
       return 0;
     }
-    gid = getU8(cmaps[i].offset + 6 + c, &ok);
+    gid = getU8(pos + 6 + c, &ok);
+    break;
+  case 2:
+    // this only handles single-byte codes
+    if (c < 0 || c > 0xff) {
+      return 0;
+    }
+    // check that: subHeaderKeys[0] = 0
+    //             subHeaders[0].firstCode = 0
+    //             subHeaders[0].entryCount = 256
+    //             subHeaders[0].idDelta = 0
+    if (getU16BE(pos + 6, &ok) != 0 ||
+	getU16BE(pos + 518 + 0, &ok) != 0 ||
+	getU16BE(pos + 518 + 2, &ok) != 256 ||
+	getU16BE(pos + 518 + 4, &ok) != 0) {
+      return 0;
+    }
+    // subHeaders[0].idRangeOffset is a byte offset from itself
+    pos = pos + 518 + 6 + getU16BE(pos + 518 + 6, &ok);
+    gid = getU16BE(pos + 2 * c, &ok);
     break;
   case 4:
     segCnt = getU16BE(pos + 6, &ok) / 2;
@@ -1022,7 +1050,7 @@ void FoFiTrueType::writeTTF(FoFiOutputFunc outputFunc,
   if (!missingCmap && !missingName && !missingPost && !missingOS2 &&
       !unsortedLoca && !emptyCmap && !badCmapLen && !abbrevHMTX &&
       nZeroLengthTables == 0 && nBogusTables == 0 &&
-      !name && !codeToGID) {
+      !name && !codeToGID && !isDfont) {
     (*outputFunc)(outputStream, (char *)file, len);
     goto done1;
   }
@@ -1632,6 +1660,14 @@ void FoFiTrueType::cvtSfnts(FoFiOutputFunc outputFunc,
   // table, cmpTrueTypeLocaOffset uses offset as its primary sort key,
   // and idx as its secondary key (ensuring that adjacent entries with
   // the same pos value remain in the same order)
+  //
+  // NB: a glyph description containing 12 zero bytes should be a
+  // valid empty glyph (from my reading of the TrueType spec), but
+  // Acrobat chokes on this (which is an issue when an Xpdf-generated
+  // PS file is converted back to PDF - with Ghostscript or
+  // Distiller), so we drop any glyph descriptions of 12 or fewer
+  // bytes -- an empty glyph description generates an empty glyph with
+  // no errors
   locaTable = (TrueTypeLoca *)gmallocn(nGlyphs + 1, sizeof(TrueTypeLoca));
   i = seekTable("loca");
   pos = tables[i].offset;
@@ -1670,11 +1706,11 @@ void FoFiTrueType::cvtSfnts(FoFiOutputFunc outputFunc,
   *maxUsedGlyph = -1;
   for (i = 0; i <= nGlyphs; ++i) {
     locaTable[i].newOffset = pos;
-    pos += locaTable[i].len;
-    if (pos & 3) {
-      pos += 4 - (pos & 3);
-    }
-    if (locaTable[i].len > 0) {
+    if (locaTable[i].len > 12) {
+      pos += locaTable[i].len;
+      if (pos & 3) {
+	pos += 4 - (pos & 3);
+      }
       *maxUsedGlyph = i;
     }
   }
@@ -1737,14 +1773,17 @@ void FoFiTrueType::cvtSfnts(FoFiOutputFunc outputFunc,
       checksum = 0;
       glyfPos = tables[seekTable("glyf")].offset;
       for (j = 0; j < nGlyphs; ++j) {
-	length += locaTable[j].len;
-	if (length & 3) {
-	  length += 4 - (length & 3);
-	}
-	if (checkRegion(glyfPos + locaTable[j].origOffset, locaTable[j].len)) {
-	  checksum +=
-	      computeTableChecksum(file + glyfPos + locaTable[j].origOffset,
-				   locaTable[j].len);
+	if (locaTable[j].len > 12) {
+	  length += locaTable[j].len;
+	  if (length & 3) {
+	    length += 4 - (length & 3);
+	  }
+	  if (checkRegion(glyfPos + locaTable[j].origOffset,
+			  locaTable[j].len)) {
+	    checksum +=
+	        computeTableChecksum(file + glyfPos + locaTable[j].origOffset,
+				     locaTable[j].len);
+	  }
 	}
       }
     } else {
@@ -1858,7 +1897,7 @@ void FoFiTrueType::cvtSfnts(FoFiOutputFunc outputFunc,
     } else if (i == t42GlyfTable) {
       glyfPos = tables[seekTable("glyf")].offset;
       for (j = 0; j < nGlyphs; ++j) {
-	if (locaTable[j].len > 0 &&
+	if (locaTable[j].len > 12 &&
 	    checkRegion(glyfPos + locaTable[j].origOffset, locaTable[j].len)) {
 	  dumpString(file + glyfPos + locaTable[j].origOffset,
 		     locaTable[j].len, outputFunc, outputStream);
@@ -1950,35 +1989,43 @@ Guint FoFiTrueType::computeTableChecksum(Guchar *data, int length) {
   return checksum;
 }
 
-void FoFiTrueType::parse() {
+void FoFiTrueType::parse(int fontNum, GBool allowHeadlessCFF) {
   Guint topTag;
-  int pos, ver, i, j;
+  int offset, pos, ver, i, j;
 
   parsedOk = gTrue;
 
-  // look for a collection (TTC)
-  topTag = getU32BE(0, &parsedOk);
-  if (!parsedOk) {
-    return;
-  }
-  if (topTag == ttcfTag) {
-    pos = getU32BE(12, &parsedOk);
+  // check for a dfont or TrueType collection (TTC)
+  // offset = start of actual TrueType font file (table positions are
+  //          relative to this
+  // pos = position of table directory (relative to offset)
+  if (isDfont) {
+    parseDfont(fontNum, &offset, &pos);
+  } else {
+    offset = 0;
+    topTag = getU32BE(0, &parsedOk);
     if (!parsedOk) {
       return;
     }
-  } else {
-    pos = 0;
+    if (topTag == ttcfTag) {
+      parseTTC(fontNum, &pos);
+    } else {
+      pos = 0;
+    }
+  }
+  if (!parsedOk) {
+    return;
   }
 
   // check the sfnt version
-  ver = getU32BE(pos, &parsedOk);
+  ver = getU32BE(offset + pos, &parsedOk);
   if (!parsedOk) {
     return;
   }
   openTypeCFF = ver == 0x4f54544f; // 'OTTO'
 
   // read the table directory
-  nTables = getU16BE(pos + 4, &parsedOk);
+  nTables = getU16BE(offset + pos + 4, &parsedOk);
   if (!parsedOk) {
     return;
   }
@@ -1986,10 +2033,10 @@ void FoFiTrueType::parse() {
   pos += 12;
   j = 0;
   for (i = 0; i < nTables; ++i) {
-    tables[j].tag = getU32BE(pos, &parsedOk);
-    tables[j].checksum = getU32BE(pos + 4, &parsedOk);
-    tables[j].offset = (int)getU32BE(pos + 8, &parsedOk);
-    tables[j].len = (int)getU32BE(pos + 12, &parsedOk);
+    tables[j].tag = getU32BE(offset + pos, &parsedOk);
+    tables[j].checksum = getU32BE(offset + pos + 4, &parsedOk);
+    tables[j].offset = offset + (int)getU32BE(offset + pos + 8, &parsedOk);
+    tables[j].len = (int)getU32BE(offset + pos + 12, &parsedOk);
     if (tables[j].offset + tables[j].len >= tables[j].offset &&
 	tables[j].offset + tables[j].len <= len) {
       // ignore any bogus entries in the table directory
@@ -2002,10 +2049,23 @@ void FoFiTrueType::parse() {
     return;
   }
 
-  // check for tables that are required by both the TrueType spec and
-  // the Type 42 spec
-  if (seekTable("head") < 0 ||
-      seekTable("hhea") < 0 ||
+  // check for the head table; allow for a head-less OpenType CFF font
+  headlessCFF = gFalse;
+  if (seekTable("head") < 0) {
+    if (openTypeCFF && allowHeadlessCFF) {
+      headlessCFF = gTrue;
+      nGlyphs = 0;
+      bbox[0] = bbox[1] = bbox[2] = bbox[3] = 0;
+      locaFmt = 0;
+      return;
+    }
+    parsedOk = gFalse;
+    return;
+  }
+
+  // check for other tables that are required by both the TrueType
+  // spec and the Type 42 spec
+  if (seekTable("hhea") < 0 ||
       seekTable("maxp") < 0 ||
       seekTable("hmtx") < 0 ||
       (!openTypeCFF && seekTable("loca") < 0) ||
@@ -2016,7 +2076,7 @@ void FoFiTrueType::parse() {
   }
 
   // read the cmaps
-  if ((i = seekTable("cmap")) >= 0) {
+  if ((i = seekTable("cmap")) >= 0 && tables[i].len >= 4) {
     pos = tables[i].offset + 2;
     nCmaps = getU16BE(pos, &parsedOk);
     pos += 2;
@@ -2035,8 +2095,6 @@ void FoFiTrueType::parse() {
     if (!parsedOk) {
       return;
     }
-  } else {
-    nCmaps = 0;
   }
 
   // get the number of glyphs from the maxp table
@@ -2085,6 +2143,74 @@ void FoFiTrueType::parse() {
 
   // read the post table
   readPostTable();
+}
+
+// Get the table directory position
+void FoFiTrueType::parseTTC(int fontNum, int *pos) {
+  int nFonts;
+
+  nFonts = getU32BE(8, &parsedOk);
+  if (!parsedOk) {
+    return;
+  }
+  if (fontNum < 0 || fontNum >= nFonts) {
+    parsedOk = gFalse;
+    return;
+  }
+  *pos = getU32BE(12 + 4 * fontNum, &parsedOk);
+}
+
+void FoFiTrueType::parseDfont(int fontNum, int *offset, int *startPos) {
+  int resMapOffset, resDataOffset;
+  int resTypeListOffset, nTypes, typeTag;
+  int nFonts, refListOffset, dataOffset;
+  int pos, i;
+
+  resDataOffset = getU32BE(0, &parsedOk);
+  resMapOffset = getU32BE(4, &parsedOk);
+  if (!parsedOk) {
+    return;
+  }
+
+  resTypeListOffset = getU16BE(resMapOffset + 24, &parsedOk);
+  // resNameListOffset = getU16BE(resMapOffset + 26, &parsedOk);
+  nTypes = getU16BE(resMapOffset + 28, &parsedOk) + 1;
+  if (!parsedOk) {
+    return;
+  }
+
+  pos = 0; // make gcc happy
+  for (i = 0; i < nTypes; ++i) {
+    pos = resMapOffset + resTypeListOffset + 2 + 8*i;
+    typeTag = getU32BE(pos, &parsedOk);
+    if (!parsedOk) {
+      return;
+    }
+    if (typeTag == 0x73666e74) { // 'sfnt'
+      break;
+    }
+  }
+  if (i >= nTypes) {
+    parsedOk = gFalse;
+    return;
+  }
+  nFonts = getU16BE(pos + 4, &parsedOk) + 1;
+  refListOffset = getU16BE(pos + 6, &parsedOk);
+  if (!parsedOk) {
+    return;
+  }
+  if (fontNum < 0 || fontNum >= nFonts) {
+    parsedOk = gFalse;
+    return;
+  }
+  pos = resMapOffset + resTypeListOffset + refListOffset + 12 * fontNum;
+  dataOffset = getU32BE(pos + 4, &parsedOk) & 0x00ffffff;
+  if (!parsedOk) {
+    return;
+  }
+  // the data offset points to a 4-byte length field, which we skip over
+  *offset = resDataOffset + dataOffset + 4;
+  *startPos = 0;
 }
 
 void FoFiTrueType::readPostTable() {

@@ -2,6 +2,8 @@
 //
 // SplashPath.cc
 //
+// Copyright 2003-2013 Glyph & Cog, LLC
+//
 //========================================================================
 
 #include <aconf.h>
@@ -53,6 +55,7 @@ SplashPath::SplashPath(SplashPath *path) {
     memcpy(hints, path->hints, hintsLength * sizeof(SplashPathHint));
   } else {
     hints = NULL;
+    hintsLength = hintsSize = 0;
   }
 }
 

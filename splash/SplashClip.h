@@ -2,6 +2,8 @@
 //
 // SplashClip.h
 //
+// Copyright 2003-2013 Glyph & Cog, LLC
+//
 //========================================================================
 
 #ifndef SPLASHCLIP_H
@@ -37,9 +39,8 @@ class SplashClip {
 public:
 
   // Create a clip, for the given rectangle.
-  SplashClip(SplashCoord x0, SplashCoord y0,
-	     SplashCoord x1, SplashCoord y1,
-	     GBool antialiasA);
+  SplashClip(int hardXMinA, int hardYMinA,
+	     int hardXMaxA, int hardYMaxA);
 
   // Copy a clip.
   SplashClip *copy() { return new SplashClip(this); }
@@ -56,10 +57,7 @@ public:
 
   // Interesect the clip with <path>.
   SplashError clipToPath(SplashPath *path, SplashCoord *matrix,
-			 SplashCoord flatness, GBool eo);
-
-  // Returns true if (<x>,<y>) is inside the clip.
-  GBool test(int x, int y);
+			 SplashCoord flatness, GBool eoA);
 
   // Tests a rectangle against the clipping region.  Returns one of:
   //   - splashClipAllInside if the entire rectangle is inside the
@@ -71,15 +69,19 @@ public:
   //   - splashClipPartial if the rectangle is part inside and part
   //     outside the clipping region
   SplashClipResult testRect(int rectXMin, int rectYMin,
-			    int rectXMax, int rectYMax);
+			    int rectXMax, int rectYMax,
+			    GBool strokeAdjust);
 
-  // Similar to testRect, but tests a horizontal span.
-  SplashClipResult testSpan(int spanXMin, int spanXMax, int spanY);
+  // Clip a scan line.  Modifies line[] by multiplying with clipping
+  // shape values for one scan line: ([x0, x1], y).
+  void clipSpan(Guchar *line, int y, int x0, int x1,
+		GBool strokeAdjust);
 
-  // Clips an anti-aliased line by setting pixels to zero.  On entry,
-  // all non-zero pixels are between <x0> and <x1>.  This function
-  // will update <x0> and <x1>.
-  void clipAALine(SplashBitmap *aaBuf, int *x0, int *x1, int y);
+  // Like clipSpan(), but uses the values 0 and 255 only.
+  // Returns true if there are any non-zero values in the result
+  // (i.e., returns false if the entire line is clipped out).
+  GBool clipSpanBinary(Guchar *line, int y, int x0, int x1,
+		       GBool strokeAdjust);
 
   // Get the rectangle part of the clip region.
   SplashCoord getXMin() { return xMin; }
@@ -88,10 +90,10 @@ public:
   SplashCoord getYMax() { return yMax; }
 
   // Get the rectangle part of the clip region, in integer coordinates.
-  int getXMinI() { return xMinI; }
-  int getXMaxI() { return xMaxI; }
-  int getYMinI() { return yMinI; }
-  int getYMaxI() { return yMaxI; }
+  int getXMinI(GBool strokeAdjust);
+  int getXMaxI(GBool strokeAdjust);
+  int getYMinI(GBool strokeAdjust);
+  int getYMaxI(GBool strokeAdjust);
 
   // Get the number of arbitrary paths used by the clip region.
   int getNumPaths() { return length; }
@@ -100,14 +102,25 @@ private:
 
   SplashClip(SplashClip *clip);
   void grow(int nPaths);
+  void updateIntBounds(GBool strokeAdjust);
 
-  GBool antialias;
-  SplashCoord xMin, yMin, xMax, yMax;
+  int hardXMin, hardYMin,	// coordinates cannot fall outside of
+      hardXMax, hardYMax;	//   [hardXMin, hardXMax), [hardYMin, hardYMax)
+
+  SplashCoord xMin, yMin,	// current clip bounding rectangle
+              xMax, yMax;	//   (these coordinates may be adjusted if
+				//   stroke adjustment is enabled)
+
   int xMinI, yMinI, xMaxI, yMaxI;
+  GBool intBoundsValid;		// true if xMinI, etc. are valid
+  GBool intBoundsStrokeAdjust;	// value of strokeAdjust used to compute
+				//   xMinI, etc.
+
   SplashXPath **paths;
-  Guchar *flags;
+  Guchar *eo;
   SplashXPathScanner **scanners;
   int length, size;
+  Guchar *buf;
 };
 
 #endif

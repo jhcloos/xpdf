@@ -44,6 +44,7 @@ static GMemHdr *gMemTail = NULL;
 static int gMemIndex = 0;
 static int gMemAlloc = 0;
 static int gMemInUse = 0;
+static int gMaxMemInUse = 0;
 
 #endif /* DEBUG_MEM */
 
@@ -56,24 +57,14 @@ void *gmalloc(int size) GMEM_EXCEP {
   unsigned long *trl, *p;
 
   if (size < 0) {
-#if USE_EXCEPTIONS
-    throw GMemException();
-#else
-    fprintf(stderr, "Invalid memory allocation size\n");
-    exit(1);
-#endif
+    gMemError("Invalid memory allocation size");
   }
   if (size == 0) {
     return NULL;
   }
   size1 = gMemDataSize(size);
   if (!(mem = (char *)malloc(size1 + gMemHdrSize + gMemTrlSize))) {
-#if USE_EXCEPTIONS
-    throw GMemException();
-#else
-    fprintf(stderr, "Out of memory\n");
-    exit(1);
-#endif
+    gMemError("Out of memory");
   }
   hdr = (GMemHdr *)mem;
   data = (void *)(mem + gMemHdrSize);
@@ -92,6 +83,9 @@ void *gmalloc(int size) GMEM_EXCEP {
   hdr->next = NULL;
   ++gMemAlloc;
   gMemInUse += size;
+  if (gMemInUse > gMaxMemInUse) {
+    gMaxMemInUse = gMemInUse;
+  }
   for (p = (unsigned long *)data; p <= trl; ++p) {
     *p = gMemDeadVal;
   }
@@ -100,23 +94,13 @@ void *gmalloc(int size) GMEM_EXCEP {
   void *p;
 
   if (size < 0) {
-#if USE_EXCEPTIONS
-    throw GMemException();
-#else
-    fprintf(stderr, "Invalid memory allocation size\n");
-    exit(1);
-#endif
+    gMemError("Invalid memory allocation size");
   }
   if (size == 0) {
     return NULL;
   }
   if (!(p = malloc(size))) {
-#if USE_EXCEPTIONS
-    throw GMemException();
-#else
-    fprintf(stderr, "Out of memory\n");
-    exit(1);
-#endif
+    gMemError("Out of memory");
   }
   return p;
 #endif
@@ -129,12 +113,7 @@ void *grealloc(void *p, int size) GMEM_EXCEP {
   int oldSize;
 
   if (size < 0) {
-#if USE_EXCEPTIONS
-    throw GMemException();
-#else
-    fprintf(stderr, "Invalid memory allocation size\n");
-    exit(1);
-#endif
+    gMemError("Invalid memory allocation size");
   }
   if (size == 0) {
     if (p) {
@@ -156,12 +135,7 @@ void *grealloc(void *p, int size) GMEM_EXCEP {
   void *q;
 
   if (size < 0) {
-#if USE_EXCEPTIONS
-    throw GMemException();
-#else
-    fprintf(stderr, "Invalid memory allocation size\n");
-    exit(1);
-#endif
+    gMemError("Invalid memory allocation size");
   }
   if (size == 0) {
     if (p) {
@@ -175,12 +149,7 @@ void *grealloc(void *p, int size) GMEM_EXCEP {
     q = malloc(size);
   }
   if (!q) {
-#if USE_EXCEPTIONS
-    throw GMemException();
-#else
-    fprintf(stderr, "Out of memory\n");
-    exit(1);
-#endif
+    gMemError("Out of memory");
   }
   return q;
 #endif
@@ -194,12 +163,7 @@ void *gmallocn(int nObjs, int objSize) GMEM_EXCEP {
   }
   n = nObjs * objSize;
   if (objSize <= 0 || nObjs < 0 || nObjs >= INT_MAX / objSize) {
-#if USE_EXCEPTIONS
-    throw GMemException();
-#else
-    fprintf(stderr, "Bogus memory allocation size\n");
-    exit(1);
-#endif
+    gMemError("Bogus memory allocation size");
   }
   return gmalloc(n);
 }
@@ -215,12 +179,7 @@ void *greallocn(void *p, int nObjs, int objSize) GMEM_EXCEP {
   }
   n = nObjs * objSize;
   if (objSize <= 0 || nObjs < 0 || nObjs >= INT_MAX / objSize) {
-#if USE_EXCEPTIONS
-    throw GMemException();
-#else
-    fprintf(stderr, "Bogus memory allocation size\n");
-    exit(1);
-#endif
+    gMemError("Bogus memory allocation size");
   }
   return grealloc(p, n);
 }
@@ -269,11 +228,21 @@ void gfree(void *p) {
 #endif
 }
 
+void gMemError(const char *msg) GMEM_EXCEP {
+#if USE_EXCEPTIONS
+  throw GMemException();
+#else
+  fprintf(stderr, "%s\n", msg);
+  exit(1);
+#endif
+}
+
 #ifdef DEBUG_MEM
 void gMemReport(FILE *f) {
   GMemHdr *p;
 
   fprintf(f, "%d memory allocations in all\n", gMemIndex);
+  fprintf(f, "maximum memory in use: %d bytes\n", gMaxMemInUse);
   if (gMemAlloc > 0) {
     fprintf(f, "%d memory blocks left allocated:\n", gMemAlloc);
     fprintf(f, " index     size\n");

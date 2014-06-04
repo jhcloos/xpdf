@@ -16,13 +16,12 @@
 #include "gmem.h"
 #include "Decrypt.h"
 
-static void aesKeyExpansion(DecryptAESState *s,
-			    Guchar *objKey, int objKeyLen);
-static void aesDecryptBlock(DecryptAESState *s, Guchar *in, GBool last);
 static void aes256KeyExpansion(DecryptAES256State *s,
 			       Guchar *objKey, int objKeyLen);
 static void aes256DecryptBlock(DecryptAES256State *s, Guchar *in, GBool last);
 static void sha256(Guchar *msg, int msgLen, Guchar *hash);
+static void sha384(Guchar *msg, int msgLen, Guchar *hash);
+static void sha512(Guchar *msg, int msgLen, Guchar *hash);
 
 static Guchar passwordPad[32] = {
   0x28, 0xbf, 0x4e, 0x5e, 0x4e, 0x75, 0x8a, 0x41,
@@ -45,6 +44,7 @@ GBool Decrypt::makeFileKey(int encVersion, int encRevision, int keyLength,
   DecryptAES256State state;
   Guchar test[127 + 56], test2[32];
   GString *userPassword2;
+  const char *userPW;
   Guchar fState[256];
   Guchar tmpKey[16];
   Guchar fx, fy;
@@ -52,7 +52,7 @@ GBool Decrypt::makeFileKey(int encVersion, int encRevision, int keyLength,
 
   *ownerPasswordOk = gFalse;
 
-  if (encRevision == 5) {
+  if (encRevision == 5 || encRevision == 6) {
 
     // check the owner password
     if (ownerPassword) {
@@ -65,6 +65,10 @@ GBool Decrypt::makeFileKey(int encVersion, int encRevision, int keyLength,
       memcpy(test + len, ownerKey->getCString() + 32, 8);
       memcpy(test + len + 8, userKey->getCString(), 48);
       sha256(test, len + 56, test);
+      if (encRevision == 6) {
+	r6Hash(test, 32, ownerPassword->getCString(), len,
+	       userKey->getCString());
+      }
       if (!memcmp(test, ownerKey->getCString(), 32)) {
 
 	// compute the file key from the owner password
@@ -72,6 +76,10 @@ GBool Decrypt::makeFileKey(int encVersion, int encRevision, int keyLength,
 	memcpy(test + len, ownerKey->getCString() + 40, 8);
 	memcpy(test + len + 8, userKey->getCString(), 48);
 	sha256(test, len + 56, test);
+	if (encRevision == 6) {
+	  r6Hash(test, 32, ownerPassword->getCString(), len,
+		 userKey->getCString());
+	}
 	aes256KeyExpansion(&state, test, 32);
 	for (i = 0; i < 16; ++i) {
 	  state.cbc[i] = 0;
@@ -90,34 +98,45 @@ GBool Decrypt::makeFileKey(int encVersion, int encRevision, int keyLength,
     // check the user password
     if (userPassword) {
       //~ this is supposed to convert the password to UTF-8 using "SASLprep"
+      userPW = userPassword->getCString();
       len = userPassword->getLength();
       if (len > 127) {
 	len = 127;
       }
-      memcpy(test, userPassword->getCString(), len);
-      memcpy(test + len, userKey->getCString() + 32, 8);
+    } else {
+      userPW = "";
+      len = 0;
+    }
+    memcpy(test, userPW, len);
+    memcpy(test + len, userKey->getCString() + 32, 8);
+    sha256(test, len + 8, test);
+    if (encRevision == 6) {
+      r6Hash(test, 32, userPW, len, NULL);
+    }
+    if (!memcmp(test, userKey->getCString(), 32)) {
+
+      // compute the file key from the user password
+      memcpy(test, userPW, len);
+      memcpy(test + len, userKey->getCString() + 40, 8);
       sha256(test, len + 8, test);
-      if (!memcmp(test, userKey->getCString(), 32)) {
-
-	// compute the file key from the user password
-	memcpy(test, userPassword->getCString(), len);
-	memcpy(test + len, userKey->getCString() + 40, 8);
-	sha256(test, len + 8, test);
-	aes256KeyExpansion(&state, test, 32);
-	for (i = 0; i < 16; ++i) {
-	  state.cbc[i] = 0;
-	}
-	aes256DecryptBlock(&state, (Guchar *)userEnc->getCString(), gFalse);
-	memcpy(fileKey, state.buf, 16);
-	aes256DecryptBlock(&state, (Guchar *)userEnc->getCString() + 16,
-			   gFalse);
-	memcpy(fileKey + 16, state.buf, 16);
-
-	return gTrue; 
+      if (encRevision == 6) {
+	r6Hash(test, 32, userPW, len, NULL);
       }
+      aes256KeyExpansion(&state, test, 32);
+      for (i = 0; i < 16; ++i) {
+	state.cbc[i] = 0;
+      }
+      aes256DecryptBlock(&state, (Guchar *)userEnc->getCString(), gFalse);
+      memcpy(fileKey, state.buf, 16);
+      aes256DecryptBlock(&state, (Guchar *)userEnc->getCString() + 16,
+			 gFalse);
+      memcpy(fileKey + 16, state.buf, 16);
+
+      return gTrue; 
     }
 
     return gFalse;
+
   } else {
 
     // try using the supplied owner password to generate the user password
@@ -169,6 +188,61 @@ GBool Decrypt::makeFileKey(int encVersion, int encRevision, int keyLength,
     return makeFileKey2(encVersion, encRevision, keyLength, ownerKey, userKey,
 			permissions, fileID, userPassword, fileKey,
 			encryptMetadata);
+  }
+}
+
+void Decrypt::r6Hash(Guchar *key, int keyLen, const char *pwd, int pwdLen,
+		     char *userKey) {
+  Guchar key1[64*(127+64+48)];
+  DecryptAESState state128;
+  int n, i, j, k;
+
+  i = 0;
+  while (1) {
+    memcpy(key1, pwd, pwdLen);
+    memcpy(key1 + pwdLen, key, keyLen);
+    n = pwdLen + keyLen;
+    if (userKey) {
+      memcpy(key1 + pwdLen + keyLen, userKey, 48);
+      n += 48;
+    }
+    for (j = 1; j < 64; ++j) {
+      memcpy(key1 + j * n, key1, n);
+    }
+    n *= 64;
+    aesKeyExpansion(&state128, key, 16, gFalse);
+    for (j = 0; j < 16; ++j) {
+      state128.cbc[j] = key[16+j];
+    }
+    for (j = 0; j < n; j += 16) {
+      aesEncryptBlock(&state128, key1 + j);
+      memcpy(key1 + j, state128.buf, 16);
+    }
+    k = 0;
+    for (j = 0; j < 16; ++j) {
+      k += key1[j] % 3;
+    }
+    k %= 3;
+    switch (k) {
+    case 0:
+      sha256(key1, n, key);
+      keyLen = 32;
+      break;
+    case 1:
+      sha384(key1, n, key);
+      keyLen = 48;
+      break;
+    case 2:
+      sha512(key1, n, key);
+      keyLen = 64;
+      break;
+    }
+    // from the spec, it appears that i should be incremented after
+    // the test, but that doesn't match what Adobe does
+    ++i;
+    if (i >= 64 && key1[n - 1] <= i - 32) {
+      break;
+    }
   }
 }
 
@@ -305,8 +379,6 @@ DecryptStream::~DecryptStream() {
 }
 
 void DecryptStream::reset() {
-  int i;
-
   str->reset();
   switch (algo) {
   case cryptRC4:
@@ -315,17 +387,13 @@ void DecryptStream::reset() {
     state.rc4.buf = EOF;
     break;
   case cryptAES:
-    aesKeyExpansion(&state.aes, objKey, objKeyLength);
-    for (i = 0; i < 16; ++i) {
-      state.aes.cbc[i] = str->getChar();
-    }
+    aesKeyExpansion(&state.aes, objKey, objKeyLength, gTrue);
+    str->getBlock((char *)state.aes.cbc, 16);
     state.aes.bufIdx = 16;
     break;
   case cryptAES256:
     aes256KeyExpansion(&state.aes256, objKey, objKeyLength);
-    for (i = 0; i < 16; ++i) {
-      state.aes256.cbc[i] = str->getChar();
-    }
+    str->getBlock((char *)state.aes256.cbc, 16);
     state.aes256.bufIdx = 16;
     break;
   }
@@ -333,7 +401,7 @@ void DecryptStream::reset() {
 
 int DecryptStream::getChar() {
   Guchar in[16];
-  int c, i;
+  int c;
 
   c = EOF; // make gcc happy
   switch (algo) {
@@ -350,11 +418,8 @@ int DecryptStream::getChar() {
     break;
   case cryptAES:
     if (state.aes.bufIdx == 16) {
-      for (i = 0; i < 16; ++i) {
-	if ((c = str->getChar()) == EOF) {
-	  return EOF;
-	}
-	in[i] = (Guchar)c;
+      if (str->getBlock((char *)in, 16) != 16) {
+	return EOF;
       }
       aesDecryptBlock(&state.aes, in, str->lookChar() == EOF);
     }
@@ -366,11 +431,8 @@ int DecryptStream::getChar() {
     break;
   case cryptAES256:
     if (state.aes256.bufIdx == 16) {
-      for (i = 0; i < 16; ++i) {
-	if ((c = str->getChar()) == EOF) {
-	  return EOF;
-	}
-	in[i] = (Guchar)c;
+      if (str->getBlock((char *)in, 16) != 16) {
+	return EOF;
       }
       aes256DecryptBlock(&state.aes256, in, str->lookChar() == EOF);
     }
@@ -386,7 +448,7 @@ int DecryptStream::getChar() {
 
 int DecryptStream::lookChar() {
   Guchar in[16];
-  int c, i;
+  int c;
 
   c = EOF; // make gcc happy
   switch (algo) {
@@ -402,11 +464,8 @@ int DecryptStream::lookChar() {
     break;
   case cryptAES:
     if (state.aes.bufIdx == 16) {
-      for (i = 0; i < 16; ++i) {
-	if ((c = str->getChar()) == EOF) {
-	  return EOF;
-	}
-	in[i] = c;
+      if (str->getBlock((char *)in, 16) != 16) {
+	return EOF;
       }
       aesDecryptBlock(&state.aes, in, str->lookChar() == EOF);
     }
@@ -418,11 +477,8 @@ int DecryptStream::lookChar() {
     break;
   case cryptAES256:
     if (state.aes256.bufIdx == 16) {
-      for (i = 0; i < 16; ++i) {
-	if ((c = str->getChar()) == EOF) {
-	  return EOF;
-	}
-	in[i] = c;
+      if (str->getBlock((char *)in, 16) != 16) {
+	return EOF;
       }
       aes256DecryptBlock(&state.aes256, in, str->lookChar() == EOF);
     }
@@ -540,12 +596,43 @@ static inline Guint rotWord(Guint x) {
   return ((x << 8) & 0xffffffff) | (x >> 24);
 }
 
+static inline void subBytes(Guchar *state) {
+  int i;
+
+  for (i = 0; i < 16; ++i) {
+    state[i] = sbox[state[i]];
+  }
+}
+
 static inline void invSubBytes(Guchar *state) {
   int i;
 
   for (i = 0; i < 16; ++i) {
     state[i] = invSbox[state[i]];
   }
+}
+
+static inline void shiftRows(Guchar *state) {
+  Guchar t;
+
+  t = state[4];
+  state[4] = state[5];
+  state[5] = state[6];
+  state[6] = state[7];
+  state[7] = t;
+
+  t = state[8];
+  state[8] = state[10];
+  state[10] = t;
+  t = state[9];
+  state[9] = state[11];
+  state[11] = t;
+
+  t = state[15];
+  state[15] = state[14];
+  state[14] = state[13];
+  state[13] = state[12];
+  state[12] = t;
 }
 
 static inline void invShiftRows(Guchar *state) {
@@ -569,6 +656,22 @@ static inline void invShiftRows(Guchar *state) {
   state[13] = state[14];
   state[14] = state[15];
   state[15] = t;
+}
+
+// {02} \cdot s
+static inline Guchar mul02(Guchar s) {
+  Guchar s2;
+
+  s2 = (s & 0x80) ? ((s << 1) ^ 0x1b) : (s << 1);
+  return s2;
+}
+
+// {03} \cdot s
+static inline Guchar mul03(Guchar s) {
+  Guchar s2;
+
+  s2 = (s & 0x80) ? ((s << 1) ^ 0x1b) : (s << 1);
+  return s ^ s2;
 }
 
 // {09} \cdot s
@@ -609,6 +712,22 @@ static inline Guchar mul0e(Guchar s) {
   s4 = (s2 & 0x80) ? ((s2 << 1) ^ 0x1b) : (s2 << 1);
   s8 = (s4 & 0x80) ? ((s4 << 1) ^ 0x1b) : (s4 << 1);
   return s2 ^ s4 ^ s8;
+}
+
+static inline void mixColumns(Guchar *state) {
+  int c;
+  Guchar s0, s1, s2, s3;
+
+  for (c = 0; c < 4; ++c) {
+    s0 = state[c];
+    s1 = state[4+c];
+    s2 = state[8+c];
+    s3 = state[12+c];
+    state[c] =    mul02(s0) ^ mul03(s1) ^       s2  ^       s3;
+    state[4+c] =        s0  ^ mul02(s1) ^ mul03(s2) ^       s3;
+    state[8+c] =        s0  ^       s1  ^ mul02(s2) ^ mul03(s3);
+    state[12+c] = mul03(s0) ^       s1  ^       s2  ^ mul02(s3);
+  }
 }
 
 static inline void invMixColumns(Guchar *state) {
@@ -654,8 +773,9 @@ static inline void addRoundKey(Guchar *state, Guint *w) {
   }
 }
 
-static void aesKeyExpansion(DecryptAESState *s,
-			    Guchar *objKey, int objKeyLen) {
+void aesKeyExpansion(DecryptAESState *s,
+		     Guchar *objKey, int objKeyLen,
+		     GBool decrypt) {
   Guint temp;
   int i, round;
 
@@ -672,12 +792,50 @@ static void aesKeyExpansion(DecryptAESState *s,
     }
     s->w[i] = s->w[i-4] ^ temp;
   }
-  for (round = 1; round <= 9; ++round) {
-    invMixColumnsW(&s->w[round * 4]);
+  if (decrypt) {
+    for (round = 1; round <= 9; ++round) {
+      invMixColumnsW(&s->w[round * 4]);
+    }
   }
 }
 
-static void aesDecryptBlock(DecryptAESState *s, Guchar *in, GBool last) {
+void aesEncryptBlock(DecryptAESState *s, Guchar *in) {
+  int c, round;
+
+  // initial state + CBC
+  for (c = 0; c < 4; ++c) {
+    s->state[c] = in[4*c] ^ s->cbc[4*c];
+    s->state[4+c] = in[4*c+1] ^ s->cbc[4*c+1];
+    s->state[8+c] = in[4*c+2] ^ s->cbc[4*c+2];
+    s->state[12+c] = in[4*c+3] ^ s->cbc[4*c+3];
+  }
+
+  // round 0
+  addRoundKey(s->state, &s->w[0]);
+
+  // rounds 1 .. 9
+  for (round = 1; round <= 9; ++round) {
+    subBytes(s->state);
+    shiftRows(s->state);
+    mixColumns(s->state);
+    addRoundKey(s->state, &s->w[round * 4]);
+  }
+
+  // round 10
+  subBytes(s->state);
+  shiftRows(s->state);
+  addRoundKey(s->state, &s->w[10 * 4]);
+
+  // output + save for next CBC
+  for (c = 0; c < 4; ++c) {
+    s->buf[4*c] = s->cbc[4*c] = s->state[c];
+    s->buf[4*c+1] = s->cbc[4*c+1] = s->state[4+c];
+    s->buf[4*c+2] = s->cbc[4*c+2] = s->state[8+c];
+    s->buf[4*c+3] = s->cbc[4*c+3] = s->state[12+c];
+  }
+}
+
+void aesDecryptBlock(DecryptAESState *s, Guchar *in, GBool last) {
   int c, round, n, i;
 
   // initial state
@@ -844,151 +1002,187 @@ static inline Gulong md5Round4(Gulong a, Gulong b, Gulong c, Gulong d,
   return b + rotateLeft((a + (c ^ (b | ~d)) + Xk + Ti), s);
 }
 
-void md5(Guchar *msg, int msgLen, Guchar *digest) {
-  Gulong x[16];
-  Gulong a, b, c, d, aa, bb, cc, dd;
-  int n64;
-  int i, j, k;
+void md5Start(MD5State *state) {
+  state->a = 0x67452301;
+  state->b = 0xefcdab89;
+  state->c = 0x98badcfe;
+  state->d = 0x10325476;
+  state->bufLen = 0;
+  state->msgLen = 0;
+}
 
-  // sanity check
+static void md5ProcessBlock(MD5State *state) {
+  Gulong x[16];
+  Gulong a, b, c, d;
+  int i;
+
+  for (i = 0; i < 16; ++i) {
+    x[i] = state->buf[4*i] | (state->buf[4*i+1] << 8) |
+           (state->buf[4*i+2] << 16) | (state->buf[4*i+3] << 24);
+  }
+
+  a = state->a;
+  b = state->b;
+  c = state->c;
+  d = state->d;
+
+  // round 1
+  a = md5Round1(a, b, c, d, x[0],   7, 0xd76aa478);
+  d = md5Round1(d, a, b, c, x[1],  12, 0xe8c7b756);
+  c = md5Round1(c, d, a, b, x[2],  17, 0x242070db);
+  b = md5Round1(b, c, d, a, x[3],  22, 0xc1bdceee);
+  a = md5Round1(a, b, c, d, x[4],   7, 0xf57c0faf);
+  d = md5Round1(d, a, b, c, x[5],  12, 0x4787c62a);
+  c = md5Round1(c, d, a, b, x[6],  17, 0xa8304613);
+  b = md5Round1(b, c, d, a, x[7],  22, 0xfd469501);
+  a = md5Round1(a, b, c, d, x[8],   7, 0x698098d8);
+  d = md5Round1(d, a, b, c, x[9],  12, 0x8b44f7af);
+  c = md5Round1(c, d, a, b, x[10], 17, 0xffff5bb1);
+  b = md5Round1(b, c, d, a, x[11], 22, 0x895cd7be);
+  a = md5Round1(a, b, c, d, x[12],  7, 0x6b901122);
+  d = md5Round1(d, a, b, c, x[13], 12, 0xfd987193);
+  c = md5Round1(c, d, a, b, x[14], 17, 0xa679438e);
+  b = md5Round1(b, c, d, a, x[15], 22, 0x49b40821);
+
+  // round 2
+  a = md5Round2(a, b, c, d, x[1],   5, 0xf61e2562);
+  d = md5Round2(d, a, b, c, x[6],   9, 0xc040b340);
+  c = md5Round2(c, d, a, b, x[11], 14, 0x265e5a51);
+  b = md5Round2(b, c, d, a, x[0],  20, 0xe9b6c7aa);
+  a = md5Round2(a, b, c, d, x[5],   5, 0xd62f105d);
+  d = md5Round2(d, a, b, c, x[10],  9, 0x02441453);
+  c = md5Round2(c, d, a, b, x[15], 14, 0xd8a1e681);
+  b = md5Round2(b, c, d, a, x[4],  20, 0xe7d3fbc8);
+  a = md5Round2(a, b, c, d, x[9],   5, 0x21e1cde6);
+  d = md5Round2(d, a, b, c, x[14],  9, 0xc33707d6);
+  c = md5Round2(c, d, a, b, x[3],  14, 0xf4d50d87);
+  b = md5Round2(b, c, d, a, x[8],  20, 0x455a14ed);
+  a = md5Round2(a, b, c, d, x[13],  5, 0xa9e3e905);
+  d = md5Round2(d, a, b, c, x[2],   9, 0xfcefa3f8);
+  c = md5Round2(c, d, a, b, x[7],  14, 0x676f02d9);
+  b = md5Round2(b, c, d, a, x[12], 20, 0x8d2a4c8a);
+
+  // round 3
+  a = md5Round3(a, b, c, d, x[5],   4, 0xfffa3942);
+  d = md5Round3(d, a, b, c, x[8],  11, 0x8771f681);
+  c = md5Round3(c, d, a, b, x[11], 16, 0x6d9d6122);
+  b = md5Round3(b, c, d, a, x[14], 23, 0xfde5380c);
+  a = md5Round3(a, b, c, d, x[1],   4, 0xa4beea44);
+  d = md5Round3(d, a, b, c, x[4],  11, 0x4bdecfa9);
+  c = md5Round3(c, d, a, b, x[7],  16, 0xf6bb4b60);
+  b = md5Round3(b, c, d, a, x[10], 23, 0xbebfbc70);
+  a = md5Round3(a, b, c, d, x[13],  4, 0x289b7ec6);
+  d = md5Round3(d, a, b, c, x[0],  11, 0xeaa127fa);
+  c = md5Round3(c, d, a, b, x[3],  16, 0xd4ef3085);
+  b = md5Round3(b, c, d, a, x[6],  23, 0x04881d05);
+  a = md5Round3(a, b, c, d, x[9],   4, 0xd9d4d039);
+  d = md5Round3(d, a, b, c, x[12], 11, 0xe6db99e5);
+  c = md5Round3(c, d, a, b, x[15], 16, 0x1fa27cf8);
+  b = md5Round3(b, c, d, a, x[2],  23, 0xc4ac5665);
+
+  // round 4
+  a = md5Round4(a, b, c, d, x[0],   6, 0xf4292244);
+  d = md5Round4(d, a, b, c, x[7],  10, 0x432aff97);
+  c = md5Round4(c, d, a, b, x[14], 15, 0xab9423a7);
+  b = md5Round4(b, c, d, a, x[5],  21, 0xfc93a039);
+  a = md5Round4(a, b, c, d, x[12],  6, 0x655b59c3);
+  d = md5Round4(d, a, b, c, x[3],  10, 0x8f0ccc92);
+  c = md5Round4(c, d, a, b, x[10], 15, 0xffeff47d);
+  b = md5Round4(b, c, d, a, x[1],  21, 0x85845dd1);
+  a = md5Round4(a, b, c, d, x[8],   6, 0x6fa87e4f);
+  d = md5Round4(d, a, b, c, x[15], 10, 0xfe2ce6e0);
+  c = md5Round4(c, d, a, b, x[6],  15, 0xa3014314);
+  b = md5Round4(b, c, d, a, x[13], 21, 0x4e0811a1);
+  a = md5Round4(a, b, c, d, x[4],   6, 0xf7537e82);
+  d = md5Round4(d, a, b, c, x[11], 10, 0xbd3af235);
+  c = md5Round4(c, d, a, b, x[2],  15, 0x2ad7d2bb);
+  b = md5Round4(b, c, d, a, x[9],  21, 0xeb86d391);
+
+  // increment a, b, c, d
+  state->a += a;
+  state->b += b;
+  state->c += c;
+  state->d += d;
+
+  state->bufLen = 0;
+}
+
+void md5Append(MD5State *state, Guchar *data, int dataLen) {
+  Guchar *p;
+  int remain, k;
+
+  p = data;
+  remain = dataLen;
+  while (state->bufLen + remain >= 64) {
+    k = 64 - state->bufLen;
+    memcpy(state->buf + state->bufLen, p, k);
+    state->bufLen = 64;
+    md5ProcessBlock(state);
+    p += k;
+    remain -= k;
+  }
+  if (remain > 0) {
+    memcpy(state->buf + state->bufLen, p, remain);
+    state->bufLen += remain;
+  }
+  state->msgLen += dataLen;
+}
+
+void md5Finish(MD5State *state) {
+  // padding and length
+  state->buf[state->bufLen++] = 0x80;
+  if (state->bufLen > 56) {
+    while (state->bufLen < 64) {
+      state->buf[state->bufLen++] = 0x00;
+    }
+    md5ProcessBlock(state);
+  }      
+  while (state->bufLen < 56) {
+    state->buf[state->bufLen++] = 0x00;
+  }
+  state->buf[56] = (Guchar)(state->msgLen << 3);
+  state->buf[57] = (Guchar)(state->msgLen >> 5);
+  state->buf[58] = (Guchar)(state->msgLen >> 13);
+  state->buf[59] = (Guchar)(state->msgLen >> 21);
+  state->buf[60] = (Guchar)(state->msgLen >> 29);
+  state->buf[61] = (Guchar)0;
+  state->buf[62] = (Guchar)0;
+  state->buf[63] = (Guchar)0;
+  state->bufLen = 64;
+  md5ProcessBlock(state);
+
+  // break digest into bytes
+  state->digest[0] = (Guchar)state->a;
+  state->digest[1] = (Guchar)(state->a >> 8);
+  state->digest[2] = (Guchar)(state->a >> 16);
+  state->digest[3] = (Guchar)(state->a >> 24);
+  state->digest[4] = (Guchar)state->b;
+  state->digest[5] = (Guchar)(state->b >> 8);
+  state->digest[6] = (Guchar)(state->b >> 16);
+  state->digest[7] = (Guchar)(state->b >> 24);
+  state->digest[8] = (Guchar)state->c;
+  state->digest[9] = (Guchar)(state->c >> 8);
+  state->digest[10] = (Guchar)(state->c >> 16);
+  state->digest[11] = (Guchar)(state->c >> 24);
+  state->digest[12] = (Guchar)state->d;
+  state->digest[13] = (Guchar)(state->d >> 8);
+  state->digest[14] = (Guchar)(state->d >> 16);
+  state->digest[15] = (Guchar)(state->d >> 24);
+}
+
+void md5(Guchar *msg, int msgLen, Guchar *digest) {
+  MD5State state;
+  int i;
+
   if (msgLen < 0) {
     return;
   }
-
-  // compute number of 64-byte blocks
-  // (length + pad byte (0x80) + 8 bytes for length)
-  n64 = (msgLen + 1 + 8 + 63) / 64;
-
-  // initialize a, b, c, d
-  a = 0x67452301;
-  b = 0xefcdab89;
-  c = 0x98badcfe;
-  d = 0x10325476;
-
-  // loop through blocks
-  k = 0;
-  for (i = 0; i < n64; ++i) {
-
-    // grab a 64-byte block
-    for (j = 0; j < 16 && k < msgLen - 3; ++j, k += 4)
-      x[j] = (((((msg[k+3] << 8) + msg[k+2]) << 8) + msg[k+1]) << 8) + msg[k];
-    if (i == n64 - 1) {
-      if (k == msgLen - 3)
-	x[j] = 0x80000000 + (((msg[k+2] << 8) + msg[k+1]) << 8) + msg[k];
-      else if (k == msgLen - 2)
-	x[j] = 0x800000 + (msg[k+1] << 8) + msg[k];
-      else if (k == msgLen - 1)
-	x[j] = 0x8000 + msg[k];
-      else
-	x[j] = 0x80;
-      ++j;
-      while (j < 16)
-	x[j++] = 0;
-      x[14] = msgLen << 3;
-    }
-
-    // save a, b, c, d
-    aa = a;
-    bb = b;
-    cc = c;
-    dd = d;
-
-    // round 1
-    a = md5Round1(a, b, c, d, x[0],   7, 0xd76aa478);
-    d = md5Round1(d, a, b, c, x[1],  12, 0xe8c7b756);
-    c = md5Round1(c, d, a, b, x[2],  17, 0x242070db);
-    b = md5Round1(b, c, d, a, x[3],  22, 0xc1bdceee);
-    a = md5Round1(a, b, c, d, x[4],   7, 0xf57c0faf);
-    d = md5Round1(d, a, b, c, x[5],  12, 0x4787c62a);
-    c = md5Round1(c, d, a, b, x[6],  17, 0xa8304613);
-    b = md5Round1(b, c, d, a, x[7],  22, 0xfd469501);
-    a = md5Round1(a, b, c, d, x[8],   7, 0x698098d8);
-    d = md5Round1(d, a, b, c, x[9],  12, 0x8b44f7af);
-    c = md5Round1(c, d, a, b, x[10], 17, 0xffff5bb1);
-    b = md5Round1(b, c, d, a, x[11], 22, 0x895cd7be);
-    a = md5Round1(a, b, c, d, x[12],  7, 0x6b901122);
-    d = md5Round1(d, a, b, c, x[13], 12, 0xfd987193);
-    c = md5Round1(c, d, a, b, x[14], 17, 0xa679438e);
-    b = md5Round1(b, c, d, a, x[15], 22, 0x49b40821);
-
-    // round 2
-    a = md5Round2(a, b, c, d, x[1],   5, 0xf61e2562);
-    d = md5Round2(d, a, b, c, x[6],   9, 0xc040b340);
-    c = md5Round2(c, d, a, b, x[11], 14, 0x265e5a51);
-    b = md5Round2(b, c, d, a, x[0],  20, 0xe9b6c7aa);
-    a = md5Round2(a, b, c, d, x[5],   5, 0xd62f105d);
-    d = md5Round2(d, a, b, c, x[10],  9, 0x02441453);
-    c = md5Round2(c, d, a, b, x[15], 14, 0xd8a1e681);
-    b = md5Round2(b, c, d, a, x[4],  20, 0xe7d3fbc8);
-    a = md5Round2(a, b, c, d, x[9],   5, 0x21e1cde6);
-    d = md5Round2(d, a, b, c, x[14],  9, 0xc33707d6);
-    c = md5Round2(c, d, a, b, x[3],  14, 0xf4d50d87);
-    b = md5Round2(b, c, d, a, x[8],  20, 0x455a14ed);
-    a = md5Round2(a, b, c, d, x[13],  5, 0xa9e3e905);
-    d = md5Round2(d, a, b, c, x[2],   9, 0xfcefa3f8);
-    c = md5Round2(c, d, a, b, x[7],  14, 0x676f02d9);
-    b = md5Round2(b, c, d, a, x[12], 20, 0x8d2a4c8a);
-
-    // round 3
-    a = md5Round3(a, b, c, d, x[5],   4, 0xfffa3942);
-    d = md5Round3(d, a, b, c, x[8],  11, 0x8771f681);
-    c = md5Round3(c, d, a, b, x[11], 16, 0x6d9d6122);
-    b = md5Round3(b, c, d, a, x[14], 23, 0xfde5380c);
-    a = md5Round3(a, b, c, d, x[1],   4, 0xa4beea44);
-    d = md5Round3(d, a, b, c, x[4],  11, 0x4bdecfa9);
-    c = md5Round3(c, d, a, b, x[7],  16, 0xf6bb4b60);
-    b = md5Round3(b, c, d, a, x[10], 23, 0xbebfbc70);
-    a = md5Round3(a, b, c, d, x[13],  4, 0x289b7ec6);
-    d = md5Round3(d, a, b, c, x[0],  11, 0xeaa127fa);
-    c = md5Round3(c, d, a, b, x[3],  16, 0xd4ef3085);
-    b = md5Round3(b, c, d, a, x[6],  23, 0x04881d05);
-    a = md5Round3(a, b, c, d, x[9],   4, 0xd9d4d039);
-    d = md5Round3(d, a, b, c, x[12], 11, 0xe6db99e5);
-    c = md5Round3(c, d, a, b, x[15], 16, 0x1fa27cf8);
-    b = md5Round3(b, c, d, a, x[2],  23, 0xc4ac5665);
-
-    // round 4
-    a = md5Round4(a, b, c, d, x[0],   6, 0xf4292244);
-    d = md5Round4(d, a, b, c, x[7],  10, 0x432aff97);
-    c = md5Round4(c, d, a, b, x[14], 15, 0xab9423a7);
-    b = md5Round4(b, c, d, a, x[5],  21, 0xfc93a039);
-    a = md5Round4(a, b, c, d, x[12],  6, 0x655b59c3);
-    d = md5Round4(d, a, b, c, x[3],  10, 0x8f0ccc92);
-    c = md5Round4(c, d, a, b, x[10], 15, 0xffeff47d);
-    b = md5Round4(b, c, d, a, x[1],  21, 0x85845dd1);
-    a = md5Round4(a, b, c, d, x[8],   6, 0x6fa87e4f);
-    d = md5Round4(d, a, b, c, x[15], 10, 0xfe2ce6e0);
-    c = md5Round4(c, d, a, b, x[6],  15, 0xa3014314);
-    b = md5Round4(b, c, d, a, x[13], 21, 0x4e0811a1);
-    a = md5Round4(a, b, c, d, x[4],   6, 0xf7537e82);
-    d = md5Round4(d, a, b, c, x[11], 10, 0xbd3af235);
-    c = md5Round4(c, d, a, b, x[2],  15, 0x2ad7d2bb);
-    b = md5Round4(b, c, d, a, x[9],  21, 0xeb86d391);
-
-    // increment a, b, c, d
-    a += aa;
-    b += bb;
-    c += cc;
-    d += dd;
+  md5Start(&state);
+  md5Append(&state, msg, msgLen);
+  md5Finish(&state);
+  for (i = 0; i < 16; ++i) {
+    digest[i] = state.digest[i];
   }
-
-  // break digest into bytes
-  digest[0] = (Guchar)(a & 0xff);
-  digest[1] = (Guchar)((a >>= 8) & 0xff);
-  digest[2] = (Guchar)((a >>= 8) & 0xff);
-  digest[3] = (Guchar)((a >>= 8) & 0xff);
-  digest[4] = (Guchar)(b & 0xff);
-  digest[5] = (Guchar)((b >>= 8) & 0xff);
-  digest[6] = (Guchar)((b >>= 8) & 0xff);
-  digest[7] = (Guchar)((b >>= 8) & 0xff);
-  digest[8] = (Guchar)(c & 0xff);
-  digest[9] = (Guchar)((c >>= 8) & 0xff);
-  digest[10] = (Guchar)((c >>= 8) & 0xff);
-  digest[11] = (Guchar)((c >>= 8) & 0xff);
-  digest[12] = (Guchar)(d & 0xff);
-  digest[13] = (Guchar)((d >>= 8) & 0xff);
-  digest[14] = (Guchar)((d >>= 8) & 0xff);
-  digest[15] = (Guchar)((d >>= 8) & 0xff);
 }
 
 //------------------------------------------------------------------------
@@ -1042,7 +1236,7 @@ static inline Guint sha256sigma1(Guint x) {
   return rotr(x, 17) ^ rotr(x, 19) ^ (x >> 10);
 }
 
-void sha256HashBlock(Guchar *blk, Guint *H) {
+static void sha256HashBlock(Guchar *blk, Guint *H) {
   Guint W[64];
   Guint a, b, c, d, e, f, g, h;
   Guint T1, T2;
@@ -1145,5 +1339,272 @@ static void sha256(Guchar *msg, int msgLen, Guchar *hash) {
     hash[i*4 + 1] = (Guchar)(H[i] >> 16);
     hash[i*4 + 2] = (Guchar)(H[i] >> 8);
     hash[i*4 + 3] = (Guchar)H[i];
+  }
+}
+
+//------------------------------------------------------------------------
+// SHA-384 and SHA-512 hashes
+//------------------------------------------------------------------------
+
+typedef unsigned long long SHA512Uint64;
+
+static SHA512Uint64 sha512K[80] = {
+  0x428a2f98d728ae22LL, 0x7137449123ef65cdLL,
+  0xb5c0fbcfec4d3b2fLL, 0xe9b5dba58189dbbcLL,
+  0x3956c25bf348b538LL, 0x59f111f1b605d019LL,
+  0x923f82a4af194f9bLL, 0xab1c5ed5da6d8118LL,
+  0xd807aa98a3030242LL, 0x12835b0145706fbeLL,
+  0x243185be4ee4b28cLL, 0x550c7dc3d5ffb4e2LL,
+  0x72be5d74f27b896fLL, 0x80deb1fe3b1696b1LL,
+  0x9bdc06a725c71235LL, 0xc19bf174cf692694LL,
+  0xe49b69c19ef14ad2LL, 0xefbe4786384f25e3LL,
+  0x0fc19dc68b8cd5b5LL, 0x240ca1cc77ac9c65LL,
+  0x2de92c6f592b0275LL, 0x4a7484aa6ea6e483LL,
+  0x5cb0a9dcbd41fbd4LL, 0x76f988da831153b5LL,
+  0x983e5152ee66dfabLL, 0xa831c66d2db43210LL,
+  0xb00327c898fb213fLL, 0xbf597fc7beef0ee4LL,
+  0xc6e00bf33da88fc2LL, 0xd5a79147930aa725LL,
+  0x06ca6351e003826fLL, 0x142929670a0e6e70LL,
+  0x27b70a8546d22ffcLL, 0x2e1b21385c26c926LL,
+  0x4d2c6dfc5ac42aedLL, 0x53380d139d95b3dfLL,
+  0x650a73548baf63deLL, 0x766a0abb3c77b2a8LL,
+  0x81c2c92e47edaee6LL, 0x92722c851482353bLL,
+  0xa2bfe8a14cf10364LL, 0xa81a664bbc423001LL,
+  0xc24b8b70d0f89791LL, 0xc76c51a30654be30LL,
+  0xd192e819d6ef5218LL, 0xd69906245565a910LL,
+  0xf40e35855771202aLL, 0x106aa07032bbd1b8LL,
+  0x19a4c116b8d2d0c8LL, 0x1e376c085141ab53LL,
+  0x2748774cdf8eeb99LL, 0x34b0bcb5e19b48a8LL,
+  0x391c0cb3c5c95a63LL, 0x4ed8aa4ae3418acbLL,
+  0x5b9cca4f7763e373LL, 0x682e6ff3d6b2b8a3LL,
+  0x748f82ee5defb2fcLL, 0x78a5636f43172f60LL,
+  0x84c87814a1f0ab72LL, 0x8cc702081a6439ecLL,
+  0x90befffa23631e28LL, 0xa4506cebde82bde9LL,
+  0xbef9a3f7b2c67915LL, 0xc67178f2e372532bLL,
+  0xca273eceea26619cLL, 0xd186b8c721c0c207LL,
+  0xeada7dd6cde0eb1eLL, 0xf57d4f7fee6ed178LL,
+  0x06f067aa72176fbaLL, 0x0a637dc5a2c898a6LL,
+  0x113f9804bef90daeLL, 0x1b710b35131c471bLL,
+  0x28db77f523047d84LL, 0x32caab7b40c72493LL,
+  0x3c9ebe0a15c9bebcLL, 0x431d67c49c100d4cLL,
+  0x4cc5d4becb3e42b6LL, 0x597f299cfc657e2aLL,
+  0x5fcb6fab3ad6faecLL, 0x6c44198c4a475817LL
+};
+
+static inline SHA512Uint64 rotr64(SHA512Uint64 x, Guint n) {
+  return (x >> n) | (x << (64 - n));
+}
+
+static inline SHA512Uint64 sha512Ch(SHA512Uint64 x, SHA512Uint64 y,
+				    SHA512Uint64 z) {
+  return (x & y) ^ (~x & z);
+}
+
+static inline SHA512Uint64 sha512Maj(SHA512Uint64 x, SHA512Uint64 y,
+				     SHA512Uint64 z) {
+  return (x & y) ^ (x & z) ^ (y & z);
+}
+
+static inline SHA512Uint64 sha512Sigma0(SHA512Uint64 x) {
+  return rotr64(x, 28) ^ rotr64(x, 34) ^ rotr64(x, 39);
+}
+
+static inline SHA512Uint64 sha512Sigma1(SHA512Uint64 x) {
+  return rotr64(x, 14) ^ rotr64(x, 18) ^ rotr64(x, 41);
+}
+
+static inline SHA512Uint64 sha512sigma0(SHA512Uint64 x) {
+  return rotr64(x, 1) ^ rotr64(x, 8) ^ (x >> 7);
+}
+
+static inline SHA512Uint64 sha512sigma1(SHA512Uint64 x) {
+  return rotr64(x, 19) ^ rotr64(x, 61) ^ (x >> 6);
+}
+
+static void sha512HashBlock(Guchar *blk, SHA512Uint64 *H) {
+  SHA512Uint64 W[80];
+  SHA512Uint64 a, b, c, d, e, f, g, h;
+  SHA512Uint64 T1, T2;
+  Guint t;
+
+  // 1. prepare the message schedule
+  for (t = 0; t < 16; ++t) {
+    W[t] = ((SHA512Uint64)blk[t*8] << 56) |
+           ((SHA512Uint64)blk[t*8 + 1] << 48) |
+           ((SHA512Uint64)blk[t*8 + 2] << 40) |
+           ((SHA512Uint64)blk[t*8 + 3] << 32) |
+           ((SHA512Uint64)blk[t*8 + 4] << 24) |
+           ((SHA512Uint64)blk[t*8 + 5] << 16) |
+           ((SHA512Uint64)blk[t*8 + 6] << 8) |
+           (SHA512Uint64)blk[t*8 + 7];
+  }
+  for (t = 16; t < 80; ++t) {
+    W[t] = sha512sigma1(W[t-2]) + W[t-7] + sha512sigma0(W[t-15]) + W[t-16];
+  }
+
+  // 2. initialize the eight working variables
+  a = H[0];
+  b = H[1];
+  c = H[2];
+  d = H[3];
+  e = H[4];
+  f = H[5];
+  g = H[6];
+  h = H[7];
+
+  // 3.
+  for (t = 0; t < 80; ++t) {
+    T1 = h + sha512Sigma1(e) + sha512Ch(e,f,g) + sha512K[t] + W[t];
+    T2 = sha512Sigma0(a) + sha512Maj(a,b,c);
+    h = g;
+    g = f;
+    f = e;
+    e = d + T1;
+    d = c;
+    c = b;
+    b = a;
+    a = T1 + T2;
+  }
+
+  // 4. compute the intermediate hash value
+  H[0] += a;
+  H[1] += b;
+  H[2] += c;
+  H[3] += d;
+  H[4] += e;
+  H[5] += f;
+  H[6] += g;
+  H[7] += h;
+}
+
+static void sha512(Guchar *msg, int msgLen, Guchar *hash) {
+  Guchar blk[128];
+  SHA512Uint64 H[8];
+  int blkLen, i;
+
+  H[0] = 0x6a09e667f3bcc908LL;
+  H[1] = 0xbb67ae8584caa73bLL;
+  H[2] = 0x3c6ef372fe94f82bLL;
+  H[3] = 0xa54ff53a5f1d36f1LL;
+  H[4] = 0x510e527fade682d1LL;
+  H[5] = 0x9b05688c2b3e6c1fLL;
+  H[6] = 0x1f83d9abfb41bd6bLL;
+  H[7] = 0x5be0cd19137e2179LL;
+
+  blkLen = 0;
+  for (i = 0; i + 128 <= msgLen; i += 128) {
+    sha512HashBlock(msg + i, H);
+  }
+  blkLen = msgLen - i;
+  if (blkLen > 0) {
+    memcpy(blk, msg + i, blkLen);
+  }
+
+  // pad the message
+  blk[blkLen++] = 0x80;
+  if (blkLen > 112) {
+    while (blkLen < 128) {
+      blk[blkLen++] = 0;
+    }
+    sha512HashBlock(blk, H);
+    blkLen = 0;
+  }
+  while (blkLen < 112) {
+    blk[blkLen++] = 0;
+  }
+  blk[112] = 0;
+  blk[113] = 0;
+  blk[114] = 0;
+  blk[115] = 0;
+  blk[116] = 0;
+  blk[117] = 0;
+  blk[118] = 0;
+  blk[119] = 0;
+  blk[120] = 0;
+  blk[121] = 0;
+  blk[122] = 0;
+  blk[123] = 0;
+  blk[124] = (Guchar)(msgLen >> 21);
+  blk[125] = (Guchar)(msgLen >> 13);
+  blk[126] = (Guchar)(msgLen >> 5);
+  blk[127] = (Guchar)(msgLen << 3);
+  sha512HashBlock(blk, H);
+
+  // copy the output into the buffer (convert words to bytes)
+  for (i = 0; i < 8; ++i) {
+    hash[i*8]     = (Guchar)(H[i] >> 56);
+    hash[i*8 + 1] = (Guchar)(H[i] >> 48);
+    hash[i*8 + 2] = (Guchar)(H[i] >> 40);
+    hash[i*8 + 3] = (Guchar)(H[i] >> 32);
+    hash[i*8 + 4] = (Guchar)(H[i] >> 24);
+    hash[i*8 + 5] = (Guchar)(H[i] >> 16);
+    hash[i*8 + 6] = (Guchar)(H[i] >> 8);
+    hash[i*8 + 7] = (Guchar)H[i];
+  }
+}
+
+static void sha384(Guchar *msg, int msgLen, Guchar *hash) {
+  Guchar blk[128];
+  SHA512Uint64 H[8];
+  int blkLen, i;
+
+  H[0] = 0xcbbb9d5dc1059ed8LL;
+  H[1] = 0x629a292a367cd507LL;
+  H[2] = 0x9159015a3070dd17LL;
+  H[3] = 0x152fecd8f70e5939LL;
+  H[4] = 0x67332667ffc00b31LL;
+  H[5] = 0x8eb44a8768581511LL;
+  H[6] = 0xdb0c2e0d64f98fa7LL;
+  H[7] = 0x47b5481dbefa4fa4LL;
+
+  blkLen = 0;
+  for (i = 0; i + 128 <= msgLen; i += 128) {
+    sha512HashBlock(msg + i, H);
+  }
+  blkLen = msgLen - i;
+  if (blkLen > 0) {
+    memcpy(blk, msg + i, blkLen);
+  }
+
+  // pad the message
+  blk[blkLen++] = 0x80;
+  if (blkLen > 112) {
+    while (blkLen < 128) {
+      blk[blkLen++] = 0;
+    }
+    sha512HashBlock(blk, H);
+    blkLen = 0;
+  }
+  while (blkLen < 112) {
+    blk[blkLen++] = 0;
+  }
+  blk[112] = 0;
+  blk[113] = 0;
+  blk[114] = 0;
+  blk[115] = 0;
+  blk[116] = 0;
+  blk[117] = 0;
+  blk[118] = 0;
+  blk[119] = 0;
+  blk[120] = 0;
+  blk[121] = 0;
+  blk[122] = 0;
+  blk[123] = 0;
+  blk[124] = (Guchar)(msgLen >> 21);
+  blk[125] = (Guchar)(msgLen >> 13);
+  blk[126] = (Guchar)(msgLen >> 5);
+  blk[127] = (Guchar)(msgLen << 3);
+  sha512HashBlock(blk, H);
+
+  // copy the output into the buffer (convert words to bytes)
+  for (i = 0; i < 6; ++i) {
+    hash[i*8]     = (Guchar)(H[i] >> 56);
+    hash[i*8 + 1] = (Guchar)(H[i] >> 48);
+    hash[i*8 + 2] = (Guchar)(H[i] >> 40);
+    hash[i*8 + 3] = (Guchar)(H[i] >> 32);
+    hash[i*8 + 4] = (Guchar)(H[i] >> 24);
+    hash[i*8 + 5] = (Guchar)(H[i] >> 16);
+    hash[i*8 + 6] = (Guchar)(H[i] >> 8);
+    hash[i*8 + 7] = (Guchar)H[i];
   }
 }

@@ -2,7 +2,7 @@
 //
 // pdfinfo.cc
 //
-// Copyright 1998-2003 Glyph & Cog, LLC
+// Copyright 1998-2013 Glyph & Cog, LLC
 //
 //========================================================================
 
@@ -16,6 +16,7 @@
 #include "parseargs.h"
 #include "GString.h"
 #include "gmem.h"
+#include "gfile.h"
 #include "GlobalParams.h"
 #include "Object.h"
 #include "Stream.h"
@@ -27,7 +28,7 @@
 #include "PDFDoc.h"
 #include "CharTypes.h"
 #include "UnicodeMap.h"
-#include "PDFDocEncoding.h"
+#include "TextString.h"
 #include "Error.h"
 #include "config.h"
 
@@ -239,6 +240,7 @@ int main(int argc, char *argv[]) {
 	wISO /= sqrt(2.0);
       }
     }
+    printf(" (rotated %d degrees)", doc->getPageRotate(pg));
     printf("\n");
   } 
 
@@ -275,16 +277,8 @@ int main(int argc, char *argv[]) {
   f = fopen(fileName->getCString(), "rb");
 #endif
   if (f) {
-#if HAVE_FSEEKO
-    fseeko(f, 0, SEEK_END);
-    printf("File size:      %u bytes\n", (Guint)ftello(f));
-#elif HAVE_FSEEK64
-    fseek64(f, 0, SEEK_END);
-    printf("File size:      %u bytes\n", (Guint)ftell64(f));
-#else
-    fseek(f, 0, SEEK_END);
-    printf("File size:      %d bytes\n", (int)ftell(f));
-#endif
+    gfseek(f, 0, SEEK_END);
+    printf("File size:      %u bytes\n", (Guint)gftell(f));
     fclose(f);
   }
 
@@ -322,36 +316,21 @@ int main(int argc, char *argv[]) {
 static void printInfoString(Dict *infoDict, const char *key, const char *text,
 			    UnicodeMap *uMap) {
   Object obj;
-  GString *s1;
-  GBool isUnicode;
-  Unicode u;
+  TextString *s;
+  Unicode *u;
   char buf[8];
   int i, n;
 
   if (infoDict->lookup(key, &obj)->isString()) {
     fputs(text, stdout);
-    s1 = obj.getString();
-    if ((s1->getChar(0) & 0xff) == 0xfe &&
-	(s1->getChar(1) & 0xff) == 0xff) {
-      isUnicode = gTrue;
-      i = 2;
-    } else {
-      isUnicode = gFalse;
-      i = 0;
-    }
-    while (i < obj.getString()->getLength()) {
-      if (isUnicode) {
-	u = ((s1->getChar(i) & 0xff) << 8) |
-	    (s1->getChar(i+1) & 0xff);
-	i += 2;
-      } else {
-	u = pdfDocEncoding[s1->getChar(i) & 0xff];
-	++i;
-      }
-      n = uMap->mapUnicode(u, buf, sizeof(buf));
+    s = new TextString(obj.getString());
+    u = s->getUnicode();
+    for (i = 0; i < s->getLength(); ++i) {
+      n = uMap->mapUnicode(u[i], buf, sizeof(buf));
       fwrite(buf, 1, n, stdout);
     }
     fputc('\n', stdout);
+    delete s;
   }
   obj.free();
 }

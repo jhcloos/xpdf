@@ -14,7 +14,7 @@ VPATH = @srcdir@
 GOOSRCDIR = $(srcdir)/../goo
 GOOLIBDIR = ../goo
 
-CXXFLAGS = @CXXFLAGS@ @DEFS@ -I.. -I$(GOOSRCDIR) -I$(srcdir)
+CXXFLAGS = @CXXFLAGS@ @DEFS@ -I.. -I$(srcdir)/.. -I$(GOOSRCDIR) -I$(srcdir)
 
 CXX = @CXX@
 AR = @AR@
@@ -68,4 +68,4 @@ clean:
 depend:
 	$(CXX) $(CXXFLAGS) -MM $(CXX_SRC) >Makefile.dep
 
-include Makefile.dep
+-include Makefile.dep

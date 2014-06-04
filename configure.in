@@ -1,5 +1,5 @@
 dnl Process this file with autoconf to produce a configure script.
-dnl Copyright 1998-2005 Glyph & Cog, LLC
+dnl Copyright 1998-2013 Glyph & Cog, LLC
 
 AC_PREREQ(2.57)
 
@@ -7,34 +7,54 @@ AC_INIT(xpdf/Gfx.cc)
 AC_CONFIG_HEADER(aconf.h)
 
 dnl ##### Optional features.
-AC_ARG_ENABLE(a4-paper,
-[  --enable-a4-paper       use A4 paper size instead of Letter for
-                          PostScript output],
-AC_DEFINE(A4_PAPER))
-AC_ARG_ENABLE(no-text-select,
-[  --enable-no-text-select do not allow text selection],
-AC_DEFINE(NO_TEXT_SELECT))
-AC_ARG_ENABLE(opi,
-[  --enable-opi            include support for OPI comments],
-AC_DEFINE(OPI_SUPPORT))
-AC_ARG_ENABLE(multithreaded,
-[  --enable-multithreaded  include support for multithreading],
-AC_DEFINE(MULTITHREADED))
-AC_ARG_ENABLE(exceptions,
-[  --enable-exceptions     use C++ exceptions],
-AC_DEFINE(USE_EXCEPTIONS))
-AC_ARG_ENABLE(wordlist,
-[  --enable-wordlist       include support for building word lists],
-AC_DEFINE(TEXTOUT_WORD_LIST))
-AC_ARG_ENABLE(fixedpoint,
-[  --enable-fixedpoint     use fixed point (instead of floating point) arithmetic],
-AC_DEFINE(USE_FIXEDPOINT))
-AC_ARG_ENABLE(cmyk,
-[  --enable-cmyk           include support for CMYK rasterization],
-AC_DEFINE(SPLASH_CMYK))
-AC_ARG_WITH(appdef-dir,
-[  --with-appdef-dir       set app-defaults directory],
-AC_DEFINE_UNQUOTED(APPDEFDIR, "$with_appdef_dir"))
+
+AC_ARG_ENABLE([a4-paper],
+  AS_HELP_STRING([--enable-a4-paper],
+                 [use A4 paper size instead of Letter for PostScript output]))
+AS_IF([test "x$enable_a4_paper" = "xyes"],
+      [AC_DEFINE(A4_PAPER)])
+
+AC_ARG_ENABLE([no-text-select],
+  AS_HELP_STRING([--enable-no-text-select],
+                 [do not allow text selection]))
+AS_IF([test "x$enable_no_text_select" = "xyes"],
+      [AC_DEFINE(NO_TEXT_SELECT)])
+
+AC_ARG_ENABLE([opi],
+  AS_HELP_STRING([--enable-opi],
+                 [include support for OPI comments]))
+AS_IF([test "x$enable_opi" = "xyes"],
+      [AC_DEFINE(OPI_SUPPORT)])
+
+AC_ARG_ENABLE([multithreaded],
+  AS_HELP_STRING([--enable-multithreaded],
+                 [include support for multithreading]))
+AS_IF([test "x$enable_multithreaded" = "xyes"],
+      [AC_DEFINE(MULTITHREADED)])
+
+AC_ARG_ENABLE([exceptions],
+  AS_HELP_STRING([--enable-exceptions],
+                 [use C++ exceptions]))
+AS_IF([test "x$enable_exceptions" = "xyes"],
+      [AC_DEFINE(USE_EXCEPTIONS)])
+
+AC_ARG_ENABLE([fixedpoint],
+  AS_HELP_STRING([--enable-fixedpoint],
+                 [use fixed point (instead of floating point) arithmetic]))
+AS_IF([test "x$enable_fixedpoint" = "xyes"],
+      [AC_DEFINE(USE_FIXEDPOINT)])
+
+AC_ARG_ENABLE([cmyk],
+  AS_HELP_STRING([--enable-cmyk],
+                 [include support for CMYK rasterization]))
+AS_IF([test "x$enable_cmyk" = "xyes"],
+      [AC_DEFINE(SPLASH_CMYK)])
+
+AC_ARG_WITH([appdef-dir],
+  AS_HELP_STRING([--with-appdef-dir],
+                 [set app-defaults directory]))
+AS_IF([test "x$with_appdef_dir" != "xno"],
+      [AC_DEFINE_UNQUOTED(APPDEFDIR, "$with_appdef_dir")])
 
 dnl ##### Path to xpdfrc.
 dnl This ugly kludge to get the sysconfdir path is needed because
@@ -241,12 +261,12 @@ dnl ##### Check for std::sort.
 AC_CACHE_CHECK([for std::sort],
 xpdf_cv_func_std_sort,
 [AC_COMPILE_IFELSE(
-  AC_LANG_PROGRAM([[#include <algorithm>
+  [AC_LANG_PROGRAM([[#include <algorithm>
 struct functor {
   bool operator()(const int &i0, const int &i1) { return i0 < i1; }
 };]],
-                  [[int a[[100]];
-std::sort(a, a+100, functor());]]),
+                  [[int a[100];
+std::sort(a, a+100, functor());]])],
 xpdf_cv_func_std_sort=yes, xpdf_cv_func_std_sort=no)])
 if test "$xpdf_cv_func_std_sort" = yes; then
   AC_DEFINE(HAVE_STD_SORT)
@@ -314,18 +334,6 @@ if test -z "$no_x"; then
   fi
 fi
 
-#dnl ##### Check for t1lib.
-#smr_CHECK_LIB(t1, t1, [Type 1 font rasterizer], 
-#              T1_InitLib, t1lib.h,
-#              -lm, $X_CFLAGS)
-# t1lib has some potential security holes, and hasn't been updated in
-# years -- if you really want to use it, uncomment the preceding lines,
-# and comment out the next two lines
-t1_LIBS=""
-t1_CFLAGS=""
-AC_SUBST(t1_LIBS)
-AC_SUBST(t1_CFLAGS)
-
 dnl ##### Check for FreeType 2.x.
 dnl ##### (Note: FT_Get_Name_Index was added in FT 2.0.5, and is
 dnl ##### the reason that Xpdf requires 2.0.5+.)
@@ -337,6 +345,11 @@ if test "x$smr_have_freetype2_library" = xyes; then
   AC_DEFINE(HAVE_FREETYPE_FREETYPE_H)
   AC_DEFINE(HAVE_SPLASH)
 fi
+
+dnl ##### Check for libpng.
+smr_CHECK_LIB(libpng, png, [PNG library], png_write_row, png.h, -lz)
+AC_SUBST(libpng_LIBS)
+AC_SUBST(libpng_CFLAGS)
 
 dnl ##### Check for libpaper (Debian).
 smr_CHECK_LIB(libpaper, paper, [Debian libpaper], paperinit, paper.h)
@@ -353,6 +366,12 @@ else
 fi
 AC_SUBST(X)
 AC_SUBST(XPDF_TARGET)
+
+dnl ##### Extra libraries.
+EXTRA_LIBS=
+EXTRA_CFLAGS=
+AC_SUBST(EXTRA_LIBS)
+AC_SUBST(EXTRA_CFLAGS)
 
 dnl ##### Write the makefiles.
 AC_OUTPUT(Makefile goo/Makefile fofi/Makefile splash/Makefile xpdf/Makefile)
@@ -371,4 +390,9 @@ if test -n "$no_x" -o "x$smr_have_Xm_library" != xyes -o "x$smr_have_freetype2_l
   AC_MSG_WARN([-- You will be able to compile pdftops, pdftotext,
         pdfinfo, pdffonts, pdfdetach, and pdfimages, but not xpdf
         or pdftoppm])
+fi
+
+dnl ##### Warn user if libpng is missing.
+if test "x$smr_have_libpng_library" != xyes; then
+  AC_MSG_WARN([Couldn't find libpng -- you will not be able to build pdftohtml or pdftopng])
 fi

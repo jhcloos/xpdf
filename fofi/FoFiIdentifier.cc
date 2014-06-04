@@ -16,6 +16,9 @@
 #include <string.h>
 #include <limits.h>
 #include "gtypes.h"
+#include "gmem.h"
+#include "GString.h"
+#include "GList.h"
 #include "FoFiIdentifier.h"
 
 //------------------------------------------------------------------------
@@ -436,12 +439,23 @@ FoFiIdentifierType FoFiIdentifier::identifyMem(char *file, int len) {
 FoFiIdentifierType FoFiIdentifier::identifyFile(char *fileName) {
   FileReader *reader;
   FoFiIdentifierType type;
+  int n;
 
   if (!(reader = FileReader::make(fileName))) {
     return fofiIdError;
   }
   type = identify(reader);
   delete reader;
+
+  // Mac OS X dfont files don't have any sort of header or magic number,
+  // so look at the file name extension
+  if (type == fofiIdUnknown) {
+    n = (int)strlen(fileName);
+    if (n >= 6 && !strcmp(fileName + n - 6, ".dfont")) {
+      type = fofiIdDfont;
+    }
+  }
+
   return type;
 }
 
@@ -629,4 +643,245 @@ static FoFiIdentifierType identifyCFF(Reader *reader, int start) {
   } else {
     return fofiIdCFF8Bit;
   }
+}
+
+//------------------------------------------------------------------------
+
+static GList *getTTCFontList(FILE *f);
+static GList *getDfontFontList(FILE *f);
+
+GList *FoFiIdentifier::getFontList(char *fileName) {
+  FILE *f;
+  char buf[4];
+  GList *ret;
+
+  if (!(f = fopen(fileName, "rb"))) {
+    return NULL;
+  }
+  if (fread(buf, 1, 4, f) == 4 &&
+      buf[0] == 0x74 &&    // 'ttcf'
+      buf[1] == 0x74 &&
+      buf[2] == 0x63 &&
+      buf[3] == 0x66) {
+    ret = getTTCFontList(f);
+  } else {
+    ret = getDfontFontList(f);
+  }
+  fclose(f);
+  return ret;
+}
+
+static GList *getTTCFontList(FILE *f) {
+  Guchar buf[12];
+  Guchar *buf2;
+  int fileLength, nFonts;
+  int tabDirOffset, nTables, nameTabOffset, nNames, stringsOffset;
+  int stringPlatform, stringLength, stringOffset;
+  GBool stringUnicode;
+  int i, j;
+  GList *ret;
+
+  fseek(f, 0, SEEK_END);
+  fileLength = (int)ftell(f);
+  if (fileLength < 0) {
+    goto err1;
+  }
+  fseek(f, 8, SEEK_SET);
+  if (fread(buf, 1, 4, f) != 4) {
+    goto err1;
+  }
+  nFonts = (buf[0] << 24) | (buf[1] << 16) | (buf[2] << 8) | buf[3];
+  if (nFonts < 0 ||
+      12 + 4 * nFonts > fileLength) {
+    goto err1;
+  }
+  ret = new GList();
+  for (i = 0; i < nFonts; ++i) {
+    fseek(f, 12 + 4 * i, SEEK_SET);
+    if (fread(buf, 1, 4, f) != 4) {
+      goto err2;
+    }
+    tabDirOffset = (buf[0] << 24) | (buf[1] << 16) | (buf[2] << 8) | buf[3];
+    if (tabDirOffset < 0 ||
+	tabDirOffset + 12 < 0 ||
+	tabDirOffset + 12 > fileLength) {
+      goto err2;
+    }
+    fseek(f, tabDirOffset, SEEK_SET);
+    if (fread(buf, 1, 12, f) != 12) {
+      goto err2;
+    }
+    nTables = (buf[4] << 8) | buf[5];
+    if (tabDirOffset + 12 + 16 * nTables < 0 ||
+	tabDirOffset + 12 + 16 * nTables > fileLength) {
+      goto err2;
+    }
+    buf2 = (Guchar *)gmallocn(nTables, 16);
+    if ((int)fread(buf2, 1, 16 * nTables, f) != 16 * nTables) {
+      goto err3;
+    }
+    nameTabOffset = 0; // make gcc happy
+    for (j = 0; j < nTables; ++j) {
+      if (buf2[16*j + 0] == 'n' &&
+	  buf2[16*j + 1] == 'a' &&
+	  buf2[16*j + 2] == 'm' &&
+	  buf2[16*j + 3] == 'e') {
+	nameTabOffset = (buf2[16*j + 8] << 24) | (buf2[16*j + 9] << 16) |
+	                (buf2[16*j + 10] << 8) | buf2[16*j + 11];
+	break;
+      }
+    }
+    gfree(buf2);
+    if (j >= nTables) {
+      goto err2;
+    }
+    if (nameTabOffset < 0 ||
+	nameTabOffset + 6 < 0 ||
+	nameTabOffset + 6 > fileLength) {
+      goto err2;
+    }
+    fseek(f, nameTabOffset, SEEK_SET);
+    if (fread(buf, 1, 6, f) != 6) {
+      goto err2;
+    }
+    nNames = (buf[2] << 8) | buf[3];
+    stringsOffset = (buf[4] << 8) | buf[5];
+    if (nameTabOffset + 6 + 12 * nNames < 0 ||
+	nameTabOffset + 6 + 12 * nNames > fileLength ||
+	nameTabOffset + stringsOffset < 0) {
+      goto err2;
+    }
+    buf2 = (Guchar *)gmallocn(nNames, 12);
+    if ((int)fread(buf2, 1, 12 * nNames, f) != 12 * nNames) {
+      goto err3;
+    }
+    for (j = 0; j < nNames; ++j) {
+      if (buf2[12*j + 6] == 0 &&   // 0x0004 = full name
+	  buf2[12*j + 7] == 4) {
+	break;
+      }
+    }
+    if (j >= nNames) {
+      goto err3;
+    }
+    stringPlatform = (buf2[12*j] << 8) | buf2[12*j + 1];
+    // stringEncoding = (buf2[12*j + 2] << 8) | buf2[12*j + 3];
+    stringUnicode = stringPlatform == 0 || stringPlatform == 3;
+    stringLength = (buf2[12*j + 8] << 8) | buf2[12*j + 9];
+    stringOffset = nameTabOffset + stringsOffset +
+                   ((buf2[12*j + 10] << 8) | buf2[12*j + 11]);
+    gfree(buf2);
+    if (stringOffset < 0 ||
+	stringOffset + stringLength < 0 ||
+	stringOffset + stringLength > fileLength) {
+      goto err2;
+    }
+    buf2 = (Guchar *)gmalloc(stringLength);
+    fseek(f, stringOffset, SEEK_SET);
+    if ((int)fread(buf2, 1, stringLength, f) != stringLength) {
+      goto err3;
+    }
+    if (stringUnicode) {
+      stringLength /= 2;
+      for (j = 0; j < stringLength; ++j) {
+	buf2[j] = buf2[2*j + 1];
+      }
+    }
+    ret->append(new GString((char *)buf2, stringLength));
+    gfree(buf2);
+  }
+  return ret;
+
+ err3:
+  gfree(buf2);
+ err2:
+  deleteGList(ret, GString);
+ err1:
+  return NULL;
+}
+
+static GList *getDfontFontList(FILE *f) {
+  Guchar buf[16];
+  Guchar *resMap;
+  int fileLength, resMapOffset, resMapLength;
+  int resTypeListOffset, resNameListOffset, nTypes;
+  int refListOffset, nFonts, nameOffset, nameLen;
+  int offset, i;
+  GList *ret;
+
+  fseek(f, 0, SEEK_END);
+  fileLength = (int)ftell(f);
+  if (fileLength < 0) {
+    goto err1;
+  }
+  fseek(f, 0, SEEK_SET);
+  if (fread((char *)buf, 1, 16, f) != 16) {
+    goto err1;
+  }
+  resMapOffset = (buf[4] << 24) | (buf[5] << 16) | (buf[6] << 8) | buf[7];
+  resMapLength = (buf[12] << 24) | (buf[13] << 16) | (buf[14] << 8) | buf[15];
+  if (resMapOffset < 0 ||
+      resMapOffset >= fileLength ||
+      resMapLength < 0 ||
+      resMapOffset + resMapLength > fileLength ||
+      resMapOffset + resMapLength < 0) {
+    goto err1;
+  }
+  if (resMapLength > 32768) {
+    // sanity check - this probably isn't a dfont file
+    goto err1;
+  }
+  resMap = (Guchar *)gmalloc(resMapLength);
+  fseek(f, resMapOffset, SEEK_SET);
+  if ((int)fread((char *)resMap, 1, resMapLength, f) != resMapLength) {
+    goto err2;
+  }
+  resTypeListOffset = (resMap[24] << 8) | resMap[25];
+  resNameListOffset = (resMap[26] << 8) | resMap[27];
+  nTypes = ((resMap[28] << 8) | resMap[29]) + 1;
+  if (resTypeListOffset + 2 + nTypes * 8 > resMapLength ||
+      resNameListOffset >= resMapLength) {
+    goto err2;
+  }
+  for (i = 0; i < nTypes; ++i) {
+    offset = resTypeListOffset + 2 + 8 * i;
+    if (resMap[offset] == 0x73 &&    // 'sfnt'
+	resMap[offset+1] == 0x66 &&
+	resMap[offset+2] == 0x6e &&
+	resMap[offset+3] == 0x74) {
+      nFonts = ((resMap[offset+4] << 8) | resMap[offset+5]) + 1;
+      refListOffset = (resMap[offset+6] << 8) | resMap[offset+7];
+      break;
+    }
+  }
+  if (i >= nTypes) {
+    goto err2;
+  }
+  if (resTypeListOffset + refListOffset >= resMapLength ||
+      resTypeListOffset + refListOffset + nFonts * 12 > resMapLength) {
+    goto err2;
+  }
+  ret = new GList();
+  for (i = 0; i < nFonts; ++i) {
+    offset = resTypeListOffset + refListOffset + 12 * i;
+    nameOffset = (resMap[offset+2] << 8) | resMap[offset+3];
+    offset = resNameListOffset + nameOffset;
+    if (offset >= resMapLength) {
+      goto err3;
+    }
+    nameLen = resMap[offset];
+    if (offset + 1 + nameLen > resMapLength) {
+      goto err3;
+    }
+    ret->append(new GString((char *)resMap + offset + 1, nameLen));
+  }
+  gfree(resMap);
+  return ret;
+
+ err3:
+  deleteGList(ret, GString);
+ err2:
+  gfree(resMap);
+ err1:
+  return NULL;
 }

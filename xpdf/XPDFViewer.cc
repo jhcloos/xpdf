@@ -165,6 +165,7 @@ XPDFViewerCmd XPDFViewer::cmdTab[] = {
   { "about",                   0, gFalse, gFalse, &XPDFViewer::cmdAbout },
   { "closeOutline",            0, gFalse, gFalse, &XPDFViewer::cmdCloseOutline },
   { "closeWindow",             0, gFalse, gFalse, &XPDFViewer::cmdCloseWindow },
+  { "closeWindowOrQuit",       0, gFalse, gFalse, &XPDFViewer::cmdCloseWindowOrQuit },
   { "continuousMode",          0, gFalse, gFalse, &XPDFViewer::cmdContinuousMode },
   { "endPan",                  0, gTrue,  gTrue,  &XPDFViewer::cmdEndPan },
   { "endSelection",            0, gTrue,  gTrue,  &XPDFViewer::cmdEndSelection },
@@ -384,7 +385,9 @@ void XPDFViewer::open(GString *fileName, int pageA, GString *destName) {
   int pg;
   double z;
 
-  if (!core->getDoc() || fileName->cmp(core->getDoc()->getFileName())) {
+  if (!core->getDoc() ||
+      !core->getDoc()->getFileName() ||
+      fileName->cmp(core->getDoc()->getFileName())) {
     if (!loadFile(fileName, NULL, NULL)) {
       return;
     }
@@ -445,7 +448,7 @@ GBool XPDFViewer::loadFile(GString *fileName, GString *ownerPassword,
 void XPDFViewer::reloadFile() {
   int pg;
 
-  if (!core->getDoc()) {
+  if (!core->getDoc() || !core->getDoc()->getFileName()) {
     return;
   }
   pg = core->getPageNum();
@@ -806,6 +809,11 @@ void XPDFViewer::cmdCloseOutline(GString *args[], int nArgs,
 void XPDFViewer::cmdCloseWindow(GString *args[], int nArgs,
 				XEvent *event) {
   app->close(this, gFalse);
+}
+
+void XPDFViewer::cmdCloseWindowOrQuit(GString *args[], int nArgs,
+				      XEvent *event) {
+  app->close(this, gTrue);
 }
 
 void XPDFViewer::cmdContinuousMode(GString *args[], int nArgs,
@@ -1803,7 +1811,7 @@ void XPDFViewer::initToolbar(Widget parent) {
   menuPane = XmCreatePulldownMenu(toolBar, "zoomMenuPane", args, n);
   for (i = 0; i < nZoomMenuItems; ++i) {
     n = 0;
-    s = XmStringCreateLocalized(zoomMenuInfo[i].label);
+    s = XmStringCreateLocalized((char *)zoomMenuInfo[i].label);
     XtSetArg(args[n], XmNlabelString, s); ++n;
     XtSetArg(args[n], XmNuserData, (XtPointer)i); ++n;
     sprintf(buf, "zoom%d", i);
@@ -3422,17 +3430,18 @@ void XPDFViewer::setupPrintDialog() {
   doc = core->getDoc();
   psFileName = globalParams->getPSFile();
   if (!psFileName || psFileName->getChar(0) == '|') {
-    pdfFileName = doc->getFileName();
-    p = pdfFileName->getCString() + pdfFileName->getLength() - 4;
-    if (!strcmp(p, ".pdf") || !strcmp(p, ".PDF")) {
-      psFileName2 = new GString(pdfFileName->getCString(),
-				pdfFileName->getLength() - 4);
-    } else {
-      psFileName2 = pdfFileName->copy();
+    if ((pdfFileName = doc->getFileName())) {
+      p = pdfFileName->getCString() + pdfFileName->getLength() - 4;
+      if (!strcmp(p, ".pdf") || !strcmp(p, ".PDF")) {
+	psFileName2 = new GString(pdfFileName->getCString(),
+				  pdfFileName->getLength() - 4);
+      } else {
+	psFileName2 = pdfFileName->copy();
+      }
+      psFileName2->append(".ps");
+      XmTextFieldSetString(printFileText, psFileName2->getCString());
+      delete psFileName2;
     }
-    psFileName2->append(".ps");
-    XmTextFieldSetString(printFileText, psFileName2->getCString());
-    delete psFileName2;
   }
   if (psFileName && psFileName->getChar(0) == '|') {
     XmToggleButtonSetState(printWithCmdBtn, True, False);

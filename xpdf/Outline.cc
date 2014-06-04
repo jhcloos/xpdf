@@ -2,7 +2,7 @@
 //
 // Outline.cc
 //
-// Copyright 2002-2003 Glyph & Cog, LLC
+// Copyright 2002-2013 Glyph & Cog, LLC
 //
 //========================================================================
 
@@ -17,7 +17,7 @@
 #include "GList.h"
 #include "Error.h"
 #include "Link.h"
-#include "PDFDocEncoding.h"
+#include "TextString.h"
 #include "Outline.h"
 
 //------------------------------------------------------------------------
@@ -32,7 +32,7 @@ Outline::Outline(Object *outlineObj, XRef *xref) {
   outlineObj->dictLookupNF("First", &first);
   outlineObj->dictLookupNF("Last", &last);
   if (first.isRef() && last.isRef()) {
-    items = OutlineItem::readItemList(&first, &last, xref);
+    items = OutlineItem::readItemList(&first, &last, NULL, xref);
   }
   first.free();
   last.free();
@@ -46,35 +46,18 @@ Outline::~Outline() {
 
 //------------------------------------------------------------------------
 
-OutlineItem::OutlineItem(Dict *dict, XRef *xrefA) {
+OutlineItem::OutlineItem(Object *itemRefA, Dict *dict,
+			 OutlineItem *parentA, XRef *xrefA) {
   Object obj1;
-  GString *s;
-  int i;
 
   xref = xrefA;
   title = NULL;
   action = NULL;
   kids = NULL;
+  parent = parentA;
 
   if (dict->lookup("Title", &obj1)->isString()) {
-    s = obj1.getString();
-    if ((s->getChar(0) & 0xff) == 0xfe &&
-	(s->getChar(1) & 0xff) == 0xff) {
-      titleLen = (s->getLength() - 2) / 2;
-      title = (Unicode *)gmallocn(titleLen, sizeof(Unicode));
-      for (i = 0; i < titleLen; ++i) {
-	title[i] = ((s->getChar(2 + 2*i) & 0xff) << 8) |
-	           (s->getChar(3 + 2*i) & 0xff);
-      }
-    } else {
-      titleLen = s->getLength();
-      title = (Unicode *)gmallocn(titleLen, sizeof(Unicode));
-      for (i = 0; i < titleLen; ++i) {
-	title[i] = pdfDocEncoding[s->getChar(i) & 0xff];
-      }
-    }
-  } else {
-    titleLen = 0;
+    title = new TextString(obj1.getString());
   }
   obj1.free();
 
@@ -88,6 +71,7 @@ OutlineItem::OutlineItem(Dict *dict, XRef *xrefA) {
   }
   obj1.free();
 
+  itemRefA->copy(&itemRef);
   dict->lookupNF("First", &firstRef);
   dict->lookupNF("Last", &lastRef);
   dict->lookupNF("Next", &nextRef);
@@ -104,22 +88,24 @@ OutlineItem::OutlineItem(Dict *dict, XRef *xrefA) {
 OutlineItem::~OutlineItem() {
   close();
   if (title) {
-    gfree(title);
+    delete title;
   }
   if (action) {
     delete action;
   }
+  itemRef.free();
   firstRef.free();
   lastRef.free();
   nextRef.free();
 }
 
 GList *OutlineItem::readItemList(Object *firstItemRef, Object *lastItemRef,
-				 XRef *xrefA) {
+				 OutlineItem *parentA, XRef *xrefA) {
   GList *items;
-  OutlineItem *item;
+  OutlineItem *item, *sibling;
   Object obj;
-  Object *p, *refObj;
+  Object *p;
+  OutlineItem *ancestor;
   int i;
 
   items = new GList();
@@ -132,8 +118,36 @@ GList *OutlineItem::readItemList(Object *firstItemRef, Object *lastItemRef,
       obj.free();
       break;
     }
-    item = new OutlineItem(obj.getDict(), xrefA);
+    item = new OutlineItem(p, obj.getDict(), parentA, xrefA);
     obj.free();
+
+    // check for loops with parents
+    for (ancestor = parentA; ancestor; ancestor = ancestor->parent) {
+      if (p->getRefNum() == ancestor->itemRef.getRefNum() &&
+	  p->getRefGen() == ancestor->itemRef.getRefGen()) {
+	error(errSyntaxError, -1, "Loop detected in outline");
+	break;
+      }
+    }
+    if (ancestor) {
+      delete item;
+      break;
+    }
+
+    // check for loops with siblings
+    for (i = 0; i < items->getLength(); ++i) {
+      sibling = (OutlineItem *)items->get(i);
+      if (p->getRefNum() == sibling->itemRef.getRefNum() &&
+	  p->getRefGen() == sibling->itemRef.getRefGen()) {
+	error(errSyntaxError, -1, "Loop detected in outline");
+	break;
+      }
+    }
+    if (i < items->getLength()) {
+      delete item;
+      break;
+    }
+
     items->append(item);
     if (p->getRefNum() == lastItemRef->getRef().num &&
 	p->getRefGen() == lastItemRef->getRef().gen) {
@@ -143,23 +157,13 @@ GList *OutlineItem::readItemList(Object *firstItemRef, Object *lastItemRef,
     if (!p->isRef()) {
       break;
     }
-    for (i = 0; i < items->getLength(); ++i) {
-      refObj = (i == 0) ? firstItemRef
-	                : &((OutlineItem *)items->get(i - 1))->nextRef;
-      if (refObj->getRefNum() == p->getRefNum() &&
-	  refObj->getRefGen() == p->getRefGen()) {
-	error(errSyntaxError, -1, "Loop detected in outline item list");
-	p = NULL;
-	break;
-      }
-    }
   } while (p);
   return items;
 }
 
 void OutlineItem::open() {
   if (!kids) {
-    kids = readItemList(&firstRef, &lastRef, xref);
+    kids = readItemList(&firstRef, &lastRef, this, xref);
   }
 }
 
@@ -168,4 +172,12 @@ void OutlineItem::close() {
     deleteGList(kids, OutlineItem);
     kids = NULL;
   }
+}
+
+Unicode *OutlineItem::getTitle() {
+  return title ? title->getUnicode() : (Unicode *)NULL;
+}
+
+int OutlineItem::getTitleLength() {
+  return title ? title->getLength() : 0;
 }

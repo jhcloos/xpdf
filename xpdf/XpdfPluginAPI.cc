@@ -14,7 +14,7 @@
 #include "GlobalParams.h"
 #include "Object.h"
 #include "PDFDoc.h"
-#ifdef WIN32
+#ifdef _WIN32
 #include "WinPDFCore.h"
 #else
 #include "XPDFCore.h"

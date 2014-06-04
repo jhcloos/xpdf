@@ -2,6 +2,8 @@
 //
 // SplashFTFontFile.h
 //
+// Copyright 2003-2013 Glyph & Cog, LLC
+//
 //========================================================================
 
 #ifndef SPLASHFTFONTFILE_H
@@ -30,17 +32,31 @@ class SplashFTFontFile: public SplashFontFile {
 public:
 
   static SplashFontFile *loadType1Font(SplashFTFontEngine *engineA,
-				       SplashFontFileID *idA, char *fileNameA,
-				       GBool deleteFileA, const char **encA);
+				       SplashFontFileID *idA,
+#if LOAD_FONTS_FROM_MEM
+				       GString *fontBufA,
+#else
+				       char *fileNameA, GBool deleteFileA,
+#endif
+				       const char **encA,
+				       GBool useLightHintingA);
   static SplashFontFile *loadCIDFont(SplashFTFontEngine *engineA,
-				     SplashFontFileID *idA, char *fileNameA,
-				     GBool deleteFileA,
+				     SplashFontFileID *idA,
+#if LOAD_FONTS_FROM_MEM
+				     GString *fontBufA,
+#else
+				     char *fileNameA, GBool deleteFileA,
+#endif
 				     int *codeToGIDA, int codeToGIDLenA);
   static SplashFontFile *loadTrueTypeFont(SplashFTFontEngine *engineA,
 					  SplashFontFileID *idA,
+#if LOAD_FONTS_FROM_MEM
+					  GString *fontBufA,
+#else
 					  char *fileNameA,
-					  int fontNum,
 					  GBool deleteFileA,
+#endif
+					  int fontNum,
 					  int *codeToGIDA,
 					  int codeToGIDLenA);
 
@@ -55,17 +71,21 @@ private:
 
   SplashFTFontFile(SplashFTFontEngine *engineA,
 		   SplashFontFileID *idA,
+#if LOAD_FONTS_FROM_MEM
+		   GString *fontBufA,
+#else
 		   char *fileNameA, GBool deleteFileA,
+#endif
 		   FT_Face faceA,
 		   int *codeToGIDA, int codeToGIDLenA,
-		   GBool trueTypeA, GBool type1A);
+		   GBool trueTypeA, GBool useLightHintingA);
 
   SplashFTFontEngine *engine;
   FT_Face face;
   int *codeToGID;
   int codeToGIDLen;
   GBool trueType;
-  GBool type1;
+  GBool useLightHinting;
 
   friend class SplashFTFont;
 };

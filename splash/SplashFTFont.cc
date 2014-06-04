@@ -2,6 +2,8 @@
 //
 // SplashFTFont.cc
 //
+// Copyright 2003-2013 Glyph & Cog, LLC
+//
 //========================================================================
 
 #include <aconf.h>
@@ -242,23 +244,24 @@ GBool SplashFTFont::makeGlyph(int c, int xFrac, int yFrac,
     return gFalse;
   }
 
-  flags = 0;
-  if (aa) {
-    flags |= FT_LOAD_NO_BITMAP;
-  }
+  // Set up the load flags:
+  // * disable bitmaps because they look ugly when scaled, rotated,
+  //   etc.
+  // * disable autohinting because it can fail badly with font subsets
+  //   that use invalid glyph names (the FreeType autohinter depends
+  //   on the glyph name to figure out how to autohint the glyph)
+  // * but enable light autohinting for Type 1 fonts because regular
+  //   hinting looks pretty bad, and the invalid glyph name issue
+  //   seems to be very rare (Type 1 fonts are mostly used for
+  //   substitution, in which case the full font is being used, which
+  //   means we have the glyph names)
+  flags = FT_LOAD_NO_BITMAP;
   if (ff->engine->flags & splashFTNoHinting) {
     flags |= FT_LOAD_NO_HINTING;
-  } else if (ff->trueType) {
-    // FT2's autohinting doesn't always work very well (especially with
-    // font subsets), so turn it off if anti-aliasing is enabled; if
-    // anti-aliasing is disabled, this seems to be a tossup - some fonts
-    // look better with hinting, some without, so leave hinting on
-    if (aa) {
-      flags |= FT_LOAD_NO_AUTOHINT;
-    }
-  } else if (ff->type1) {
-    // Type 1 fonts seem to look better with 'light' hinting mode
+  } else if (ff->useLightHinting) {
     flags |= FT_LOAD_TARGET_LIGHT;
+  } else {
+    flags |= FT_LOAD_NO_AUTOHINT;
   }
   if (FT_Load_Glyph(ff->face, gid, flags)) {
     return gFalse;

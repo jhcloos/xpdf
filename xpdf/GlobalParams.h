@@ -173,7 +173,7 @@ public:
 
   // Initialize the global parameters by attempting to read a config
   // file.
-  GlobalParams(char *cfgFileName);
+  GlobalParams(const char *cfgFileName);
 
   ~GlobalParams();
 
@@ -193,6 +193,8 @@ public:
   FILE *findCMapFile(GString *collection, GString *cMapName);
   FILE *findToUnicodeFile(GString *name);
   GString *findFontFile(GString *fontName);
+  GString *findBase14FontFile(GString *fontName, int *fontNum,
+			      double *oblique);
   GString *findSystemFontFile(GString *fontName, SysFontType *type,
 			      int *fontNum);
   GString *findCCFontFile(GString *collection);
@@ -202,6 +204,7 @@ public:
   void getPSImageableArea(int *llx, int *lly, int *urx, int *ury);
   GBool getPSDuplex();
   GBool getPSCrop();
+  GBool getPSUseCropBoxAsPage();
   GBool getPSExpandSmaller();
   GBool getPSShrinkLarger();
   GBool getPSCenter();
@@ -218,9 +221,12 @@ public:
   GBool getPSPreload();
   GBool getPSOPI();
   GBool getPSASCIIHex();
+  GBool getPSLZW();
   GBool getPSUncompressPreloadedImages();
+  double getPSMinLineWidth();
   double getPSRasterResolution();
   GBool getPSRasterMono();
+  int getPSRasterSliceSize();
   GBool getPSAlwaysRasterize();
   GString *getTextEncodingName();
   EndOfLineKind getTextEOL();
@@ -228,7 +234,6 @@ public:
   GBool getTextKeepTinyChars();
   GString *getInitialZoom();
   GBool getContinuousView();
-  GBool getEnableT1lib();
   GBool getEnableFreeType();
   GBool getDisableFreeTypeHinting();
   GBool getAntialias();
@@ -249,6 +254,8 @@ public:
   GString *getMovieCommand() { return movieCommand; }
   GBool getMapNumericCharNames();
   GBool getMapUnknownCharNames();
+  GBool getMapExtTrueTypeFontsViaUnicode();
+  GBool getEnableXFA();
   GList *getKeyBinding(int code, int mods, int context);
   GBool getPrintCommands();
   GBool getErrQuiet();
@@ -269,6 +276,7 @@ public:
   void setPSImageableArea(int llx, int lly, int urx, int ury);
   void setPSDuplex(GBool duplex);
   void setPSCrop(GBool crop);
+  void setPSUseCropBoxAsPage(GBool crop);
   void setPSExpandSmaller(GBool expand);
   void setPSShrinkLarger(GBool shrink);
   void setPSCenter(GBool center);
@@ -281,13 +289,12 @@ public:
   void setPSPreload(GBool preload);
   void setPSOPI(GBool opi);
   void setPSASCIIHex(GBool hex);
-  void setTextEncoding(char *encodingName);
+  void setTextEncoding(const char *encodingName);
   GBool setTextEOL(char *s);
   void setTextPageBreaks(GBool pageBreaks);
   void setTextKeepTinyChars(GBool keep);
   void setInitialZoom(char *s);
   void setContinuousView(GBool cont);
-  GBool setEnableT1lib(char *s);
   GBool setEnableFreeType(char *s);
   GBool setAntialias(char *s);
   GBool setVectorAntialias(char *s);
@@ -299,6 +306,8 @@ public:
   void setScreenWhiteThreshold(double thresh);
   void setMapNumericCharNames(GBool map);
   void setMapUnknownCharNames(GBool map);
+  void setMapExtTrueTypeFontsViaUnicode(GBool map);
+  void setEnableXFA(GBool enable);
   void setPrintCommands(GBool printCommandsA);
   void setErrQuiet(GBool errQuietA);
 
@@ -379,6 +388,8 @@ private:
   GList *fontDirs;		// list of font dirs [GString]
   GHash *ccFontFiles;		// character collection font files:
 				//   collection name  mapped to path [GString]
+  GHash *base14SysFonts;	// Base-14 system font files: font name
+				//   mapped to path [Base14FontInfo]
   SysFontList *sysFonts;	// system fonts
   GString *psFile;		// PostScript file or command (for xpdf)
   int psPaperWidth;		// paper size, in PostScript points, for
@@ -388,6 +399,7 @@ private:
       psImageableURX,
       psImageableURY;
   GBool psCrop;			// crop PS output to CropBox
+  GBool psUseCropBoxAsPage;	// use CropBox as page size
   GBool psExpandSmaller;	// expand smaller pages to fill paper
   GBool psShrinkLarger;		// shrink larger pages to fit paper
   GBool psCenter;		// center pages on the paper
@@ -411,11 +423,15 @@ private:
 				//   memory
   GBool psOPI;			// generate PostScript OPI comments?
   GBool psASCIIHex;		// use ASCIIHex instead of ASCII85?
+  GBool psLZW;			// false to use RLE instead of LZW
   GBool psUncompressPreloadedImages;  // uncompress all preloaded images
+  double psMinLineWidth;	// minimum line width for PostScript output
   double psRasterResolution;	// PostScript rasterization resolution (dpi)
   GBool psRasterMono;		// true to do PostScript rasterization
 				//   in monochrome (gray); false to do it
 				//   in color (RGB/CMYK)
+  int psRasterSliceSize;	// maximum size (pixels) of PostScript
+				//   rasterization slice
   GBool psAlwaysRasterize;	// force PostScript rasterization
   GString *textEncoding;	// encoding (unicodeMap) to use for text
 				//   output
@@ -425,7 +441,6 @@ private:
   GBool textKeepTinyChars;	// keep all characters in text output
   GString *initialZoom;		// initial zoom level
   GBool continuousView;		// continuous view mode
-  GBool enableT1lib;		// t1lib enable flag
   GBool enableFreeType;		// FreeType enable flag
   GBool disableFreeTypeHinting;	// FreeType hinting disable flag
   GBool antialias;		// font anti-aliasing enable flag
@@ -446,6 +461,9 @@ private:
   GString *movieCommand;	// command executed for movie annotations
   GBool mapNumericCharNames;	// map numeric char names (from font subsets)?
   GBool mapUnknownCharNames;	// map unknown char names?
+  GBool mapExtTrueTypeFontsViaUnicode;  // map char codes to GID via Unicode
+				        //   for external TrueType fonts?
+  GBool enableXFA;		// enable XFA form rendering
   GList *keyBindings;		// key & mouse button bindings [KeyBinding]
   GBool printCommands;		// print the drawing commands
   GBool errQuiet;		// suppress error messages?

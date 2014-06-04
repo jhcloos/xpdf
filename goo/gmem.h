@@ -58,6 +58,11 @@ extern void *greallocn(void *p, int nObjs, int objSize) GMEM_EXCEP;
  */
 extern void gfree(void *p);
 
+/*
+ * Report a memory error.
+ */
+extern void gMemError(const char *msg) GMEM_EXCEP;
+
 #ifdef DEBUG_MEM
 /*
  * Report on unfreed memory.

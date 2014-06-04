@@ -18,10 +18,10 @@
 #include "gtypes.h"
 #include "Object.h"
 
+class GList;
 class Dict;
 class Stream;
-struct PSObject;
-class PSStack;
+struct PSCode;
 
 //------------------------------------------------------------------------
 // Function
@@ -217,13 +217,16 @@ public:
 private:
 
   PostScriptFunction(PostScriptFunction *func);
-  GBool parseCode(Stream *str, int *codePtr);
+  GBool parseCode(GList *tokens, int *tokPtr, int *codePtr);
+  void addCode(int *codePtr, int op);
+  void addCodeI(int *codePtr, int op, int x);
+  void addCodeD(int *codePtr, int op, double x);
   GString *getToken(Stream *str);
-  void resizeCode(int newSize);
-  void exec(PSStack *stack, int codePtr);
+  int exec(double *stack, int sp0);
 
   GString *codeString;
-  PSObject *code;
+  PSCode *code;
+  int codeLen;
   int codeSize;
   double cacheIn[funcMaxInputs];
   double cacheOut[funcMaxOutputs];

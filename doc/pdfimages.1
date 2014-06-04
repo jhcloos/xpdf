@@ -1,8 +1,8 @@
-.\" Copyright 1998-2011 Glyph & Cog, LLC
-.TH pdfimages 1 "15 August 2011"
+.\" Copyright 1998-2014 Glyph & Cog, LLC
+.TH pdfimages 1 "28 May 2014"
 .SH NAME
 pdfimages \- Portable Document Format (PDF) image extractor
-(version 3.03)
+(version 3.04)
 .SH SYNOPSIS
 .B pdfimages
 [options]
@@ -15,9 +15,9 @@ Pixmap (PPM), Portable Bitmap (PBM), or JPEG files.
 Pdfimages reads the PDF file, scans one or more pages,
 .IR PDF-file ,
 and writes one PPM, PBM, or JPEG file for each image,
-.IR image-root - nnn . xxx ,
+.IR image-root - nnnn . xxx ,
 where
-.I nnn
+.I nnnn
 is the image number and
 .I xxx
 is the image type (.ppm, .pbm, .jpg).
@@ -88,16 +88,18 @@ Error related to PDF permissions.
 99
 Other error.
 .SH AUTHOR
-The pdfimages software and documentation are copyright 1998-2011 Glyph
+The pdfimages software and documentation are copyright 1998-2014 Glyph
 & Cog, LLC.
 .SH "SEE ALSO"
 .BR xpdf (1),
 .BR pdftops (1),
 .BR pdftotext (1),
+.BR pdftohtml (1),
 .BR pdfinfo (1),
 .BR pdffonts (1),
 .BR pdfdetach (1),
 .BR pdftoppm (1),
+.BR pdftopng (1),
 .BR xpdfrc (5)
 .br
 .B http://www.foolabs.com/xpdf/

@@ -2,6 +2,8 @@
 //
 // SplashFontFileID.h
 //
+// Copyright 2003-2013 Glyph & Cog, LLC
+//
 //========================================================================
 
 #ifndef SPLASHFONTFILEID_H

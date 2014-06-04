@@ -30,17 +30,31 @@ struct TrueTypeCmap;
 class FoFiTrueType: public FoFiBase {
 public:
 
-  // Create a FoFiTrueType object from a memory buffer.
-  static FoFiTrueType *make(char *fileA, int lenA);
+  // Create a FoFiTrueType object from a memory buffer.  If
+  // <allowHeadlessCFF> is true, OpenType CFF fonts without the 'head'
+  // table are permitted -- this is useful when calling the convert*
+  // functions.
+  static FoFiTrueType *make(char *fileA, int lenA, int fontNum,
+			    GBool allowHeadlessCFF = gFalse);
 
-  // Create a FoFiTrueType object from a file on disk.
-  static FoFiTrueType *load(char *fileName);
+  // Create a FoFiTrueType object from a file on disk.  If
+  // <allowHeadlessCFF> is true, OpenType CFF fonts without the 'head'
+  // table are permitted -- this is useful when calling the convert*
+  // functions.
+  static FoFiTrueType *load(char *fileName, int fontNum,
+			    GBool allowHeadlessCFF = gFalse);
 
   virtual ~FoFiTrueType();
 
   // Returns true if this an OpenType font containing CFF data, false
   // if it's a TrueType font (or OpenType font with TrueType data).
   GBool isOpenTypeCFF() { return openTypeCFF; }
+
+  // Returns true if this is an OpenType CFF font that is missing the
+  // 'head' table.  This is a violation of the OpenType spec, but the
+  // embedded CFF font can be usable for some purposes (e.g., the
+  // convert* functions).
+  GBool isHeadlessCFF() { return headlessCFF; }
 
   // Return the number of cmaps defined by this font.
   int getNumCmaps();
@@ -148,7 +162,8 @@ public:
 
 private:
 
-  FoFiTrueType(char *fileA, int lenA, GBool freeFileDataA);
+  FoFiTrueType(char *fileA, int lenA, GBool freeFileDataA,
+	       int fontNum, GBool isDfont, GBool allowHeadlessCFF);
   void cvtEncoding(char **encoding,
 		   FoFiOutputFunc outputFunc,
 		   void *outputStream);
@@ -164,7 +179,9 @@ private:
 		  FoFiOutputFunc outputFunc,
 		  void *outputStream);
   Guint computeTableChecksum(Guchar *data, int length);
-  void parse();
+  void parse(int fontNum, GBool allowHeadlessCFF);
+  void parseTTC(int fontNum, int *pos);
+  void parseDfont(int fontNum, int *offset, int *pos);
   void readPostTable();
   int seekTable(const char *tag);
 
@@ -177,6 +194,8 @@ private:
   int bbox[4];
   GHash *nameToGID;
   GBool openTypeCFF;
+  GBool headlessCFF;
+  GBool isDfont;
 
   GBool parsedOk;
 };

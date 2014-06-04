@@ -2,6 +2,8 @@
 //
 // SplashState.cc
 //
+// Copyright 2003-2013 Glyph & Cog, LLC
+//
 //========================================================================
 
 #include <aconf.h>
@@ -45,7 +47,7 @@ SplashState::SplashState(int width, int height, GBool vectorAntialias,
   blendFunc = NULL;
   strokeAlpha = 1;
   fillAlpha = 1;
-  lineWidth = 0;
+  lineWidth = 1;
   lineCap = splashLineCapButt;
   lineJoin = splashLineJoinMiter;
   miterLimit = 10;
@@ -54,10 +56,12 @@ SplashState::SplashState(int width, int height, GBool vectorAntialias,
   lineDashLength = 0;
   lineDashPhase = 0;
   strokeAdjust = gFalse;
-  clip = new SplashClip(0, 0, width, height, vectorAntialias);
+  clip = new SplashClip(0, 0, width, height);
+  clipIsShared = gFalse;
   softMask = NULL;
   deleteSoftMask = gFalse;
   inNonIsolatedGroup = gFalse;
+  inKnockoutGroup = gFalse;
   for (i = 0; i < 256; ++i) {
     rgbTransferR[i] = (Guchar)i;
     rgbTransferG[i] = (Guchar)i;
@@ -87,7 +91,7 @@ SplashState::SplashState(int width, int height, GBool vectorAntialias,
   blendFunc = NULL;
   strokeAlpha = 1;
   fillAlpha = 1;
-  lineWidth = 0;
+  lineWidth = 1;
   lineCap = splashLineCapButt;
   lineJoin = splashLineJoinMiter;
   miterLimit = 10;
@@ -96,10 +100,12 @@ SplashState::SplashState(int width, int height, GBool vectorAntialias,
   lineDashLength = 0;
   lineDashPhase = 0;
   strokeAdjust = gFalse;
-  clip = new SplashClip(0, 0, width, height, vectorAntialias);
+  clip = new SplashClip(0, 0, width, height);
+  clipIsShared = gFalse;
   softMask = NULL;
   deleteSoftMask = gFalse;
   inNonIsolatedGroup = gFalse;
+  inKnockoutGroup = gFalse;
   for (i = 0; i < 256; ++i) {
     rgbTransferR[i] = (Guchar)i;
     rgbTransferG[i] = (Guchar)i;
@@ -137,10 +143,12 @@ SplashState::SplashState(SplashState *state) {
   }
   lineDashPhase = state->lineDashPhase;
   strokeAdjust = state->strokeAdjust;
-  clip = state->clip->copy();
+  clip = state->clip;
+  clipIsShared = gTrue;
   softMask = state->softMask;
   deleteSoftMask = gFalse;
   inNonIsolatedGroup = state->inNonIsolatedGroup;
+  inKnockoutGroup = state->inKnockoutGroup;
   memcpy(rgbTransferR, state->rgbTransferR, 256);
   memcpy(rgbTransferG, state->rgbTransferG, 256);
   memcpy(rgbTransferB, state->rgbTransferB, 256);
@@ -158,7 +166,9 @@ SplashState::~SplashState() {
   delete fillPattern;
   delete screen;
   gfree(lineDash);
-  delete clip;
+  if (!clipIsShared) {
+    delete clip;
+  }
   if (deleteSoftMask && softMask) {
     delete softMask;
   }
@@ -190,6 +200,32 @@ void SplashState::setLineDash(SplashCoord *lineDashA, int lineDashLengthA,
     lineDash = NULL;
   }
   lineDashPhase = lineDashPhaseA;
+}
+
+void SplashState::clipResetToRect(SplashCoord x0, SplashCoord y0,
+				  SplashCoord x1, SplashCoord y1) {
+  if (clipIsShared) {
+    clip = clip->copy();
+    clipIsShared = gFalse;
+  }
+  clip->resetToRect(x0, y0, x1, y1);
+}
+
+SplashError SplashState::clipToRect(SplashCoord x0, SplashCoord y0,
+				    SplashCoord x1, SplashCoord y1) {
+  if (clipIsShared) {
+    clip = clip->copy();
+    clipIsShared = gFalse;
+  }
+  return clip->clipToRect(x0, y0, x1, y1);
+}
+
+SplashError SplashState::clipToPath(SplashPath *path, GBool eo) {
+  if (clipIsShared) {
+    clip = clip->copy();
+    clipIsShared = gFalse;
+  }
+  return clip->clipToPath(path, matrix, flatness, eo);
 }
 
 void SplashState::setSoftMask(SplashBitmap *softMaskA) {

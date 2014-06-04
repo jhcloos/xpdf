@@ -49,35 +49,35 @@ public:
 
   FixedPoint operator =(FixedPoint x) { val = x.val; return *this; }
 
-  int operator ==(FixedPoint x) { return val == x.val; }
-  int operator ==(double x) { return *this == (FixedPoint)x; }
-  int operator ==(int x) { return *this == (FixedPoint)x; }
-  int operator ==(long x) { return *this == (FixedPoint)x; }
+  int operator ==(FixedPoint x) const { return val == x.val; }
+  int operator ==(double x) const { return *this == (FixedPoint)x; }
+  int operator ==(int x) const { return *this == (FixedPoint)x; }
+  int operator ==(long x) const { return *this == (FixedPoint)x; }
 
-  int operator !=(FixedPoint x) { return val != x.val; }
-  int operator !=(double x) { return *this != (FixedPoint)x; }
-  int operator !=(int x) { return *this != (FixedPoint)x; }
-  int operator !=(long x) { return *this != (FixedPoint)x; }
+  int operator !=(FixedPoint x) const { return val != x.val; }
+  int operator !=(double x) const { return *this != (FixedPoint)x; }
+  int operator !=(int x) const { return *this != (FixedPoint)x; }
+  int operator !=(long x) const { return *this != (FixedPoint)x; }
 
-  int operator <(FixedPoint x) { return val < x.val; }
-  int operator <(double x) { return *this < (FixedPoint)x; }
-  int operator <(int x) { return *this < (FixedPoint)x; }
-  int operator <(long x) { return *this < (FixedPoint)x; }
+  int operator <(FixedPoint x) const { return val < x.val; }
+  int operator <(double x) const { return *this < (FixedPoint)x; }
+  int operator <(int x) const { return *this < (FixedPoint)x; }
+  int operator <(long x) const { return *this < (FixedPoint)x; }
 
-  int operator <=(FixedPoint x) { return val <= x.val; }
-  int operator <=(double x) { return *this <= (FixedPoint)x; }
-  int operator <=(int x) { return *this <= (FixedPoint)x; }
-  int operator <=(long x) { return *this <= (FixedPoint)x; }
+  int operator <=(FixedPoint x) const { return val <= x.val; }
+  int operator <=(double x) const { return *this <= (FixedPoint)x; }
+  int operator <=(int x) const { return *this <= (FixedPoint)x; }
+  int operator <=(long x) const { return *this <= (FixedPoint)x; }
 
-  int operator >(FixedPoint x) { return val > x.val; }
-  int operator >(double x) { return *this > (FixedPoint)x; }
-  int operator >(int x) { return *this > (FixedPoint)x; }
-  int operator >(long x) { return *this > (FixedPoint)x; }
+  int operator >(FixedPoint x) const { return val > x.val; }
+  int operator >(double x) const { return *this > (FixedPoint)x; }
+  int operator >(int x) const { return *this > (FixedPoint)x; }
+  int operator >(long x) const { return *this > (FixedPoint)x; }
 
-  int operator >=(FixedPoint x) { return val >= x.val; }
-  int operator >=(double x) { return *this >= (FixedPoint)x; }
-  int operator >=(int x) { return *this >= (FixedPoint)x; }
-  int operator >=(long x) { return *this >= (FixedPoint)x; }
+  int operator >=(FixedPoint x) const { return val >= x.val; }
+  int operator >=(double x) const { return *this >= (FixedPoint)x; }
+  int operator >=(int x) const { return *this >= (FixedPoint)x; }
+  int operator >=(long x) const { return *this >= (FixedPoint)x; }
 
   FixedPoint operator -() { return make(-val); }
 

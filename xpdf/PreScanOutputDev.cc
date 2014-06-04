@@ -61,13 +61,13 @@ void PreScanOutputDev::eoFill(GfxState *state) {
 }
 
 void PreScanOutputDev::tilingPatternFill(GfxState *state, Gfx *gfx,
-					 Object *str,
+					 Object *strRef,
 					 int paintType, Dict *resDict,
 					 double *mat, double *bbox,
 					 int x0, int y0, int x1, int y1,
 					 double xStep, double yStep) {
   if (paintType == 1) {
-    gfx->drawForm(str, resDict, mat, bbox);
+    gfx->drawForm(strRef, resDict, mat, bbox);
   } else {
     check(state->getFillColorSpace(), state->getFillColor(),
 	  state->getFillOpacity(), state->getBlendMode());
@@ -174,9 +174,7 @@ void PreScanOutputDev::endType3Char(GfxState *state) {
 
 void PreScanOutputDev::drawImageMask(GfxState *state, Object *ref, Stream *str,
 				     int width, int height, GBool invert,
-				     GBool inlineImg) {
-  int i, j;
-
+				     GBool inlineImg, GBool interpolate) {
   check(state->getFillColorSpace(), state->getFillColor(),
 	state->getFillOpacity(), state->getBlendMode());
   if (state->getFillColorSpace()->getMode() == csPattern) {
@@ -186,9 +184,7 @@ void PreScanOutputDev::drawImageMask(GfxState *state, Object *ref, Stream *str,
 
   if (inlineImg) {
     str->reset();
-    j = height * ((width + 7) / 8);
-    for (i = 0; i < j; ++i)
-      str->getChar();
+    str->discardChars(height * ((width + 7) / 8));
     str->close();
   }
 }
@@ -196,9 +192,9 @@ void PreScanOutputDev::drawImageMask(GfxState *state, Object *ref, Stream *str,
 void PreScanOutputDev::drawImage(GfxState *state, Object *ref, Stream *str,
 				 int width, int height,
 				 GfxImageColorMap *colorMap,
-				 int *maskColors, GBool inlineImg) {
+				 int *maskColors, GBool inlineImg,
+				 GBool interpolate) {
   GfxColorSpace *colorSpace;
-  int i, j;
 
   colorSpace = colorMap->getColorSpace();
   if (colorSpace->getMode() == csIndexed) {
@@ -221,10 +217,8 @@ void PreScanOutputDev::drawImage(GfxState *state, Object *ref, Stream *str,
 
   if (inlineImg) {
     str->reset();
-    j = height * ((width * colorMap->getNumPixelComps() *
-		   colorMap->getBits() + 7) / 8);
-    for (i = 0; i < j; ++i)
-      str->getChar();
+    str->discardChars(height * ((width * colorMap->getNumPixelComps() *
+				 colorMap->getBits() + 7) / 8));
     str->close();
   }
 }
@@ -235,7 +229,7 @@ void PreScanOutputDev::drawMaskedImage(GfxState *state, Object *ref,
 				       GfxImageColorMap *colorMap,
 				       Stream *maskStr,
 				       int maskWidth, int maskHeight,
-				       GBool maskInvert) {
+				       GBool maskInvert, GBool interpolate) {
   GfxColorSpace *colorSpace;
 
   colorSpace = colorMap->getColorSpace();
@@ -264,7 +258,8 @@ void PreScanOutputDev::drawSoftMaskedImage(GfxState *state, Object *ref,
 					   GfxImageColorMap *colorMap,
 					   Stream *maskStr,
 					   int maskWidth, int maskHeight,
-					   GfxImageColorMap *maskColorMap) {
+					   GfxImageColorMap *maskColorMap,
+					   GBool interpolate) {
   GfxColorSpace *colorSpace;
 
   colorSpace = colorMap->getColorSpace();

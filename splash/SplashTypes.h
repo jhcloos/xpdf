@@ -2,6 +2,8 @@
 //
 // SplashTypes.h
 //
+// Copyright 2003-2013 Glyph & Cog, LLC
+//
 //========================================================================
 
 #ifndef SPLASHTYPES_H

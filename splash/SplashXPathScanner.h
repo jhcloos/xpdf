@@ -2,6 +2,8 @@
 //
 // SplashXPathScanner.h
 //
+// Copyright 2003-2013 Glyph & Cog, LLC
+//
 //========================================================================
 
 #ifndef SPLASHXPATHSCANNER_H
@@ -15,9 +17,8 @@
 
 #include "SplashTypes.h"
 
+class GList;
 class SplashXPath;
-class SplashBitmap;
-struct SplashIntersect;
 
 //------------------------------------------------------------------------
 // SplashXPathScanner
@@ -28,68 +29,47 @@ public:
 
   // Create a new SplashXPathScanner object.  <xPathA> must be sorted.
   SplashXPathScanner(SplashXPath *xPathA, GBool eoA,
-		     int clipYMin, int clipYMax);
+		     int yMinA, int yMaxA);
 
   ~SplashXPathScanner();
 
-  // Return the path's bounding box.
-  void getBBox(int *xMinA, int *yMinA, int *xMaxA, int *yMaxA)
-    { *xMinA = xMin; *yMinA = yMin; *xMaxA = xMax; *yMaxA = yMax; }
+  // Compute shape values for a scan line.  Fills in line[] with shape
+  // values for one scan line: ([x0, x1], y).  The values are in [0,
+  // 255].
+  void getSpan(Guchar *line, int y, int x0, int x1);
 
-  // Return the path's bounding box.
-  void getBBoxAA(int *xMinA, int *yMinA, int *xMaxA, int *yMaxA);
-
-  // Returns true if at least part of the path was outside the
-  // clipYMin/clipYMax bounds passed to the constructor.
-  GBool hasPartialClip() { return partialClip; }
-
-  // Return the min/max x values for the span at <y>.
-  void getSpanBounds(int y, int *spanXMin, int *spanXMax);
-
-  // Returns true if (<x>,<y>) is inside the path.
-  GBool test(int x, int y);
-
-  // Returns true if the entire span ([<x0>,<x1>], <y>) is inside the
-  // path.
-  GBool testSpan(int x0, int x1, int y);
-
-  // Returns the next span inside the path at <y>.  If <y> is
-  // different than the previous call to getNextSpan, this returns the
-  // first span at <y>; otherwise it returns the next span (relative
-  // to the previous call to getNextSpan).  Returns false if there are
-  // no more spans at <y>.
-  GBool getNextSpan(int y, int *x0, int *x1);
-
-  // Renders one anti-aliased line into <aaBuf>.  Returns the min and
-  // max x coordinates with non-zero pixels in <x0> and <x1>.
-  void renderAALine(SplashBitmap *aaBuf, int *x0, int *x1, int y);
-
-  // Clips an anti-aliased line by setting pixels to zero.  On entry,
-  // all non-zero pixels are between <x0> and <x1>.  This function
-  // will update <x0> and <x1>.
-  void clipAALine(SplashBitmap *aaBuf, int *x0, int *x1, int y);
+  // Like getSpan(), but uses the values 0 and 255 only.  Writes 255
+  // for all pixels which include non-zero area inside the path.
+  void getSpanBinary(Guchar *line, int y, int x0, int x1);
 
 private:
 
-  void computeIntersections();
-  void addIntersection(double segYMin, double segYMax,
-		       Guint segFlags,
-		       int y, int x0, int x1);
+  inline void addArea(Guchar *line, int x, SplashCoord a);
+  void drawTrapezoid(Guchar *line, int xMin, int xMax,
+		     SplashCoord y0, SplashCoord y1,
+		     SplashCoord xa0, SplashCoord xa1, SplashCoord dydxa,
+		     SplashCoord xb0, SplashCoord xb1, SplashCoord dydxb);
+  SplashCoord areaLeft(int xp,
+		       SplashCoord x0, SplashCoord y0,
+		       SplashCoord x1, SplashCoord y1,
+		       SplashCoord dydx);
+  SplashCoord areaRight(int xp,
+			SplashCoord x0, SplashCoord y0,
+			SplashCoord x1, SplashCoord y1,
+			SplashCoord dydx);
+  void drawRectangle(Guchar *line, int xMin, int xMax,
+		     SplashCoord y0, SplashCoord y1,
+		     SplashCoord x0, SplashCoord x1);
+  void sortActiveSegs();
+  void insertActiveSeg(SplashXPathSeg *seg);
 
   SplashXPath *xPath;
   GBool eo;
-  int xMin, yMin, xMax, yMax;
-  GBool partialClip;
+  int yMin, yMax;
 
-  SplashIntersect *allInter;	// array of intersections
-  int allInterLen;		// number of intersections in <allInter>
-  int allInterSize;		// size of the <allInter> array
-  int *inter;			// indexes into <allInter> for each y value
-  int interY;			// current y value - used by getNextSpan
-  int interIdx;			// current index into <inter> - used by
-				//   getNextSpan 
-  int interCount;		// current EO/NZWN counter - used by
-				//   getNextSpan
+  GList *activeSegs;		// [SplashXPathSeg]
+  int nextSeg;
+  int yNext;
 };
 
 #endif

@@ -16,7 +16,7 @@
 #include <stdlib.h>
 #include <stddef.h>
 #include <string.h>
-#ifdef WIN32
+#ifdef _WIN32
 #  include <windows.h>
 #endif
 #include "GString.h"
@@ -52,7 +52,7 @@ PDFDoc::PDFDoc(GString *fileNameA, GString *ownerPassword,
 	       GString *userPassword, PDFCore *coreA) {
   Object obj;
   GString *fileName1, *fileName2;
-#ifdef WIN32
+#ifdef _WIN32
   int n, i;
 #endif
 
@@ -71,7 +71,7 @@ PDFDoc::PDFDoc(GString *fileNameA, GString *ownerPassword,
   optContent = NULL;
 
   fileName = fileNameA;
-#ifdef WIN32
+#ifdef _WIN32
   n = fileName->getLength();
   fileNameU = (wchar_t *)gmallocn(n + 1, sizeof(wchar_t));
   for (i = 0; i < n; ++i) {
@@ -114,7 +114,7 @@ PDFDoc::PDFDoc(GString *fileNameA, GString *ownerPassword,
   ok = setup(ownerPassword, userPassword);
 }
 
-#ifdef WIN32
+#ifdef _WIN32
 PDFDoc::PDFDoc(wchar_t *fileNameA, int fileNameLen, GString *ownerPassword,
 	       GString *userPassword, PDFCore *coreA) {
   OSVERSIONINFO version;
@@ -169,7 +169,7 @@ PDFDoc::PDFDoc(wchar_t *fileNameA, int fileNameLen, GString *ownerPassword,
 
 PDFDoc::PDFDoc(BaseStream *strA, GString *ownerPassword,
 	       GString *userPassword, PDFCore *coreA) {
-#ifdef WIN32
+#ifdef _WIN32
   int n, i;
 #endif
 
@@ -178,7 +178,7 @@ PDFDoc::PDFDoc(BaseStream *strA, GString *ownerPassword,
   core = coreA;
   if (strA->getFileName()) {
     fileName = strA->getFileName()->copy();
-#ifdef WIN32
+#ifdef _WIN32
     n = fileName->getLength();
     fileNameU = (wchar_t *)gmallocn(n + 1, sizeof(wchar_t));
     for (i = 0; i < n; ++i) {
@@ -188,7 +188,7 @@ PDFDoc::PDFDoc(BaseStream *strA, GString *ownerPassword,
 #endif
   } else {
     fileName = NULL;
-#ifdef WIN32
+#ifdef _WIN32
     fileNameU = NULL;
 #endif
   }
@@ -230,6 +230,7 @@ GBool PDFDoc::setup(GString *ownerPassword, GString *userPassword) {
 
   // read the optional content info
   optContent = new OptionalContent(this);
+
 
   // done
   return gTrue;
@@ -294,7 +295,7 @@ PDFDoc::~PDFDoc() {
   if (fileName) {
     delete fileName;
   }
-#ifdef WIN32
+#ifdef _WIN32
   if (fileNameU) {
     gfree(fileNameU);
   }
@@ -309,10 +310,8 @@ void PDFDoc::checkHeader() {
   int i;
 
   pdfVersion = 0;
-  for (i = 0; i < headerSearchSize; ++i) {
-    hdrBuf[i] = str->getChar();
-  }
-  hdrBuf[headerSearchSize] = '\0';
+  memset(hdrBuf, 0, headerSearchSize + 1);
+  str->getBlock(hdrBuf, headerSearchSize);
   for (i = 0; i < headerSearchSize - 5; ++i) {
     if (!strncmp(&hdrBuf[i], "%PDF-", 5)) {
       break;
@@ -455,15 +454,16 @@ GBool PDFDoc::isLinearized() {
 
 GBool PDFDoc::saveAs(GString *name) {
   FILE *f;
-  int c;
+  char buf[4096];
+  int n;
 
   if (!(f = fopen(name->getCString(), "wb"))) {
     error(errIO, -1, "Couldn't open file '{0:t}'", name);
     return gFalse;
   }
   str->reset();
-  while ((c = str->getChar()) != EOF) {
-    fputc(c, f);
+  while ((n = str->getBlock(buf, sizeof(buf))) > 0) {
+    fwrite(buf, 1, n, f);
   }
   str->close();
   fclose(f);
@@ -482,7 +482,7 @@ GBool PDFDoc::saveEmbeddedFile(int idx, char *path) {
   return ret;
 }
 
-#ifdef WIN32
+#ifdef _WIN32
 GBool PDFDoc::saveEmbeddedFile(int idx, wchar_t *path, int pathLen) {
   FILE *f;
   OSVERSIONINFO version;
@@ -518,14 +518,15 @@ GBool PDFDoc::saveEmbeddedFile(int idx, wchar_t *path, int pathLen) {
 
 GBool PDFDoc::saveEmbeddedFile2(int idx, FILE *f) {
   Object strObj;
-  int c;
+  char buf[4096];
+  int n;
 
   if (!catalog->getEmbeddedFileStreamObj(idx, &strObj)) {
     return gFalse;
   }
   strObj.streamReset();
-  while ((c = strObj.streamGetChar()) != EOF) {
-    fputc(c, f);
+  while ((n = strObj.streamGetBlock(buf, sizeof(buf))) > 0) {
+    fwrite(buf, 1, n, f);
   }
   strObj.streamClose();
   strObj.free();
@@ -535,24 +536,28 @@ GBool PDFDoc::saveEmbeddedFile2(int idx, FILE *f) {
 char *PDFDoc::getEmbeddedFileMem(int idx, int *size) {
   Object strObj;
   char *buf;
-  int bufSize, len, c;
+  int bufSize, sizeInc, n;
 
   if (!catalog->getEmbeddedFileStreamObj(idx, &strObj)) {
     return NULL;
   }
   strObj.streamReset();
-  bufSize = 1024;
-  buf = (char *)gmalloc(bufSize);
-  len = 0;
-  while ((c = strObj.streamGetChar()) != EOF) {
-    if (len == bufSize) {
-      bufSize *= 2;
-      buf = (char *)grealloc(buf, bufSize);
+  bufSize = 0;
+  buf = NULL;
+  do {
+    sizeInc = bufSize ? bufSize : 1024;
+    if (bufSize > INT_MAX - sizeInc) {
+      error(errIO, -1, "embedded file is too large");
+      *size = 0;
+      return NULL;
     }
-    buf[len++] = (char)c;
-  }
+    buf = (char *)grealloc(buf, bufSize + sizeInc);
+    n = strObj.streamGetBlock(buf + bufSize, sizeInc);
+    bufSize += n;
+  } while (n == sizeInc);
   strObj.streamClose();
   strObj.free();
-  *size = len;
+  *size = bufSize;
   return buf;
 }
+

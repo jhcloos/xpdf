@@ -2,7 +2,7 @@
 //
 // PDFCore.cc
 //
-// Copyright 2004 Glyph & Cog, LLC
+// Copyright 2004-2013 Glyph & Cog, LLC
 //
 //========================================================================
 
@@ -100,7 +100,8 @@ PDFCore::PDFCore(SplashColorMode colorModeA, int bitmapRowPadA,
   selectULY = selectLRY = 0;
   dragging = gFalse;
   lastDragLeft = lastDragTop = gTrue;
-  selectXorColor[0] = selectXorColor[1] = selectXorColor[2] = 0;
+  selectXorColor[0] = selectXorColor[1] = selectXorColor[2] =
+      reverseVideoA ? 0xff : 0x00;
   splashColorXor(selectXorColor, paperColorA);
 
   historyCur = pdfHistorySize - 1;
@@ -128,7 +129,11 @@ PDFCore::~PDFCore() {
   }
   for (i = 0; i < pdfHistorySize; ++i) {
     if (history[i].fileName) {
+#ifdef _WIN32
+      delete[] history[i].fileName;
+#else
       delete history[i].fileName;
+#endif
     }
   }
   gfree(pageY);
@@ -147,7 +152,7 @@ int PDFCore::loadFile(GString *fileName, GString *ownerPassword,
   return err;
 }
 
-#ifdef WIN32
+#ifdef _WIN32
 int PDFCore::loadFile(wchar_t *fileName, int fileNameLen,
 		      GString *ownerPassword, GString *userPassword) {
   int err;
@@ -423,6 +428,7 @@ void PDFCore::update(int topPageA, int scrollXA, int scrollYA,
 
   // check for changes to the PDF file
   if ((force || (!continuousMode && topPage != topPageA)) &&
+      doc->getFileName() &&
       checkForNewFile()) {
     if (loadFile(doc->getFileName()) == errNone) {
       if (topPageA > doc->getNumPages()) {
@@ -758,13 +764,30 @@ void PDFCore::update(int topPageA, int scrollXA, int scrollYA,
     }
     hist = &history[historyCur];
     if (hist->fileName) {
+#ifdef _WIN32
+      delete[] hist->fileName;
+#else
       delete hist->fileName;
+#endif
     }
+#ifdef _WIN32
+    if (doc->getFileNameU()) {
+      hist->fileName = (wchar_t *)gmallocn(MAX_PATH + 1, sizeof(wchar_t));
+      if (GetFullPathNameW(doc->getFileNameU(), MAX_PATH + 1,
+			   hist->fileName, NULL) == 0) {
+	delete[] hist->fileName;
+	hist->fileName = NULL;
+      }
+    } else {
+      hist->fileName = NULL;
+    }
+#else
     if (doc->getFileName()) {
       hist->fileName = doc->getFileName()->copy();
     } else {
       hist->fileName = NULL;
     }
+#endif
     hist->page = topPage;
     if (historyBLen < pdfHistorySize) {
       ++historyBLen;
@@ -807,6 +830,7 @@ void PDFCore::addPage(int pg, int rot) {
 
 void PDFCore::needTile(PDFCorePage *page, int x, int y) {
   PDFCoreTile *tile;
+  TextOutputControl textOutCtrl;
   TextOutputDev *textOut;
   int xDest, yDest, sliceW, sliceH;
   int i;
@@ -893,7 +917,8 @@ void PDFCore::needTile(PDFCorePage *page, int x, int y) {
     page->links = doc->getLinks(page->page);
   }
   if (!page->text) {
-    if ((textOut = new TextOutputDev(NULL, gTrue, 0, gFalse, gFalse))) {
+    textOutCtrl.mode = textOutPhysLayout;
+    if ((textOut = new TextOutputDev(NULL, &textOutCtrl, gFalse))) {
       doc->displayPage(textOut, page->page, dpi, dpi, rotate,
 		       gFalse, gTrue, gFalse);
       page->text = textOut->takeText();
@@ -977,11 +1002,27 @@ GBool PDFCore::goForward() {
   }
   --historyFLen;
   ++historyBLen;
-  if (!doc || history[historyCur].fileName->cmp(doc->getFileName()) != 0) {
+  if (!history[historyCur].fileName) {
+    return gFalse;
+  }
+#ifdef _WIN32
+  if (!doc ||
+      !doc->getFileNameU() ||
+      wcscmp(history[historyCur].fileName, doc->getFileNameU()) != 0) {
+    if (loadFile(history[historyCur].fileName,
+		 wcslen(history[historyCur].fileName)) != errNone) {
+      return gFalse;
+    }
+  }
+#else
+  if (!doc ||
+      !doc->getFileName() ||
+      history[historyCur].fileName->cmp(doc->getFileName()) != 0) {
     if (loadFile(history[historyCur].fileName) != errNone) {
       return gFalse;
     }
   }
+#endif
   pg = history[historyCur].page;
   update(pg, scrollX, continuousMode ? -1 : scrollY,
 	 zoom, rotate, gFalse, gFalse, gTrue);
@@ -999,11 +1040,27 @@ GBool PDFCore::goBackward() {
   }
   --historyBLen;
   ++historyFLen;
-  if (!doc || history[historyCur].fileName->cmp(doc->getFileName()) != 0) {
+  if (!history[historyCur].fileName) {
+    return gFalse;
+  }
+#ifdef _WIN32
+  if (!doc ||
+      !doc->getFileNameU() ||
+      wcscmp(history[historyCur].fileName, doc->getFileNameU()) != 0) {
+    if (loadFile(history[historyCur].fileName,
+		 wcslen(history[historyCur].fileName)) != errNone) {
+      return gFalse;
+    }
+  }
+#else
+  if (!doc ||
+      !doc->getFileName() ||
+      history[historyCur].fileName->cmp(doc->getFileName()) != 0) {
     if (loadFile(history[historyCur].fileName) != errNone) {
       return gFalse;
     }
   }
+#endif
   pg = history[historyCur].page;
   update(pg, scrollX, continuousMode ? -1 : scrollY,
 	 zoom, rotate, gFalse, gFalse, gTrue);
@@ -1615,6 +1672,7 @@ GBool PDFCore::getSelection(int *pg, double *ulx, double *uly,
 GString *PDFCore::extractText(int pg, double xMin, double yMin,
 			      double xMax, double yMax) {
   PDFCorePage *page;
+  TextOutputControl textOutCtrl;
   TextOutputDev *textOut;
   int x0, y0, x1, y1, t;
   GString *s;
@@ -1633,7 +1691,8 @@ GString *PDFCore::extractText(int pg, double xMin, double yMin,
     }
     s = page->text->getText(x0, y0, x1, y1);
   } else {
-    textOut = new TextOutputDev(NULL, gTrue, 0, gFalse, gFalse);
+    textOutCtrl.mode = textOutPhysLayout;
+    textOut = new TextOutputDev(NULL, &textOutCtrl, gFalse);
     if (textOut->isOk()) {
       doc->displayPage(textOut, pg, dpi, dpi, rotate, gFalse, gTrue, gFalse);
       textOut->cvtUserToDev(xMin, yMin, &x0, &y0);
@@ -1675,10 +1734,10 @@ GBool PDFCore::find(char *s, GBool caseSensitive, GBool next, GBool backward,
 GBool PDFCore::findU(Unicode *u, int len, GBool caseSensitive,
 		     GBool next, GBool backward, GBool wholeWord,
 		     GBool onePageOnly) {
+  TextOutputControl textOutCtrl;
   TextOutputDev *textOut;
   double xMin, yMin, xMax, yMax;
   PDFCorePage *page;
-  PDFCoreTile *tile;
   int pg;
   GBool startAtTop, startAtLast, stopAtLast;
 
@@ -1721,7 +1780,8 @@ GBool PDFCore::findU(Unicode *u, int len, GBool caseSensitive,
   if (!onePageOnly) {
 
     // search following/previous pages
-    textOut = new TextOutputDev(NULL, gTrue, 0, gFalse, gFalse);
+    textOutCtrl.mode = textOutPhysLayout;
+    textOut = new TextOutputDev(NULL, &textOutCtrl, gFalse);
     if (!textOut->isOk()) {
       delete textOut;
       goto notFound;
@@ -1791,7 +1851,6 @@ GBool PDFCore::findU(Unicode *u, int len, GBool caseSensitive,
 
   // found: change the selection
  found:
-  tile = (PDFCoreTile *)page->tiles->get(0);
   setSelection(pg, (int)floor(xMin), (int)floor(yMin),
 	       (int)ceil(xMax), (int)ceil(yMax));
 

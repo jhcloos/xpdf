@@ -26,6 +26,7 @@ class PageAttrs;
 struct Ref;
 class LinkDest;
 class PageTreeNode;
+class Form;
 
 //------------------------------------------------------------------------
 // Catalog
@@ -82,12 +83,15 @@ public:
 
   Object *getAcroForm() { return &acroForm; }
 
+  Form *getForm() { return form; }
+
   Object *getOCProperties() { return &ocProperties; }
 
   // Get the list of embedded files.
   int getNumEmbeddedFiles();
   Unicode *getEmbeddedFileName(int idx);
   int getEmbeddedFileNameLength(int idx);
+  Object *getEmbeddedFileStreamRef(int idx);
   Object *getEmbeddedFileStreamObj(int idx, Object *strObj);
 
 private:
@@ -106,6 +110,7 @@ private:
   Object structTreeRoot;	// structure tree root dictionary
   Object outline;		// outline dictionary
   Object acroForm;		// AcroForm dictionary
+  Form *form;			// parsed form
   Object ocProperties;		// OCProperties dictionary
   GList *embeddedFiles;		// embedded file list [EmbeddedFile]
   GBool ok;			// true if catalog is valid

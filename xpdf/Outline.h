@@ -2,7 +2,7 @@
 //
 // Outline.h
 //
-// Copyright 2002-2003 Glyph & Cog, LLC
+// Copyright 2002-2013 Glyph & Cog, LLC
 //
 //========================================================================
 
@@ -22,6 +22,7 @@ class GString;
 class GList;
 class XRef;
 class LinkAction;
+class TextString;
 
 //------------------------------------------------------------------------
 
@@ -44,17 +45,18 @@ private:
 class OutlineItem {
 public:
 
-  OutlineItem(Dict *dict, XRef *xrefA);
+  OutlineItem(Object *itemRefA, Dict *dict, OutlineItem *parentA, XRef *xrefA);
   ~OutlineItem();
 
   static GList *readItemList(Object *firstItemRef, Object *lastItemRef,
-			     XRef *xrefA);
+			     OutlineItem *parentA, XRef *xrefA);
 
   void open();
   void close();
 
-  Unicode *getTitle() { return title; }
-  int getTitleLength() { return titleLen; }
+  Unicode *getTitle();
+  int getTitleLength();
+  TextString *getTitleTextString() { return title; }
   LinkAction *getAction() { return action; }
   GBool isOpen() { return startsOpen; }
   GBool hasKids() { return firstRef.isRef(); }
@@ -63,14 +65,15 @@ public:
 private:
 
   XRef *xref;
-  Unicode *title;
-  int titleLen;
+  TextString *title;		// may be NULL
   LinkAction *action;
+  Object itemRef;
   Object firstRef;
   Object lastRef;
   Object nextRef;
   GBool startsOpen;
   GList *kids;			// NULL unless this item is open [OutlineItem]
+  OutlineItem *parent;
 };
 
 #endif

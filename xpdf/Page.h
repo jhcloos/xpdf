@@ -77,6 +77,7 @@ public:
   Dict *getSeparationInfo()
     { return separationInfo.isDict()
 	? separationInfo.getDict() : (Dict *)NULL; }
+  double getUserUnit() { return userUnit; }
   Dict *getResourceDict()
     { return resources.isDict() ? resources.getDict() : (Dict *)NULL; }
 
@@ -100,6 +101,7 @@ private:
   Object metadata;
   Object pieceInfo;
   Object separationInfo;
+  double userUnit;
   Object resources;
 };
 
@@ -146,6 +148,7 @@ public:
   Stream *getMetadata() { return attrs->getMetadata(); }
   Dict *getPieceInfo() { return attrs->getPieceInfo(); }
   Dict *getSeparationInfo() { return attrs->getSeparationInfo(); }
+  double getUserUnit() { return attrs->getUserUnit(); }
 
   // Get resource dictionary.
   Dict *getResourceDict() { return attrs->getResourceDict(); }

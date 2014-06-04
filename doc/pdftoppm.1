@@ -1,8 +1,8 @@
-.\" Copyright 2005-2011 Glyph & Cog, LLC
-.TH pdftoppm 1 "15 August 2011"
+.\" Copyright 2005-2014 Glyph & Cog, LLC
+.TH pdftoppm 1 "28 May 2014"
 .SH NAME
 pdftoppm \- Portable Document Format (PDF) to Portable Pixmap (PPM)
-converter (version 3.03)
+converter (version 3.04)
 .SH SYNOPSIS
 .B pdftoppm
 [options]
@@ -52,11 +52,6 @@ Generate a monochrome PBM file (instead of a color PPM file).
 .TP
 .B \-gray
 Generate a grayscale PGM file (instead of a color PPM file).
-.TP
-.BI \-t1lib " yes | no"
-Enable or disable t1lib (a Type 1 font rasterizer).  This defaults to
-"yes".
-.RB "[config file: " enableT1lib ]
 .TP
 .BI \-freetype " yes | no"
 Enable or disable FreeType (a TrueType / Type 1 font rasterizer).
@@ -109,15 +104,17 @@ Error related to PDF permissions.
 99
 Other error.
 .SH AUTHOR
-The pdftoppm software and documentation are copyright 1996-2011 Glyph
+The pdftoppm software and documentation are copyright 1996-2014 Glyph
 & Cog, LLC.
 .SH "SEE ALSO"
 .BR xpdf (1),
 .BR pdftops (1),
 .BR pdftotext (1),
+.BR pdftohtml (1),
 .BR pdfinfo (1),
 .BR pdffonts (1),
 .BR pdfdetach (1),
+.BR pdftopng (1),
 .BR pdfimages (1),
 .BR xpdfrc (5)
 .br

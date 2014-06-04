@@ -24,7 +24,13 @@
 #include "Lexer.h"
 #include "PDFDoc.h"
 #include "OptionalContent.h"
+#include "Form.h"
 #include "Annot.h"
+
+// the MSVC math.h doesn't define this
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
 
 //------------------------------------------------------------------------
 
@@ -32,33 +38,13 @@
 #define annotFlagPrint     0x0004
 #define annotFlagNoView    0x0020
 
-#define fieldFlagReadOnly           0x00000001
-#define fieldFlagRequired           0x00000002
-#define fieldFlagNoExport           0x00000004
-#define fieldFlagMultiline          0x00001000
-#define fieldFlagPassword           0x00002000
-#define fieldFlagNoToggleToOff      0x00004000
-#define fieldFlagRadio              0x00008000
-#define fieldFlagPushbutton         0x00010000
-#define fieldFlagCombo              0x00020000
-#define fieldFlagEdit               0x00040000
-#define fieldFlagSort               0x00080000
-#define fieldFlagFileSelect         0x00100000
-#define fieldFlagMultiSelect        0x00200000
-#define fieldFlagDoNotSpellCheck    0x00400000
-#define fieldFlagDoNotScroll        0x00800000
-#define fieldFlagComb               0x01000000
-#define fieldFlagRichText           0x02000000
-#define fieldFlagRadiosInUnison     0x02000000
-#define fieldFlagCommitOnSelChange  0x04000000
-
-#define fieldQuadLeft   0
-#define fieldQuadCenter 1
-#define fieldQuadRight  2
-
 // distance of Bezier control point from center for circle approximation
 // = (4 * (sqrt(2) - 1) / 3) * r
 #define bezierCircle 0.55228475
+
+#define lineEndSize1    6
+#define lineEndSize2   10
+#define lineArrowAngle (M_PI / 6)
 
 //------------------------------------------------------------------------
 // AnnotBorderStyle
@@ -66,14 +52,16 @@
 
 AnnotBorderStyle::AnnotBorderStyle(AnnotBorderType typeA, double widthA,
 				   double *dashA, int dashLengthA,
-				   double rA, double gA, double bA) {
+				   double *colorA, int nColorCompsA) {
   type = typeA;
   width = widthA;
   dash = dashA;
   dashLength = dashLengthA;
-  r = rA;
-  g = gA;
-  b = bA;
+  color[0] = colorA[0];
+  color[1] = colorA[1];
+  color[2] = colorA[2];
+  color[3] = colorA[3];
+  nColorComps = nColorCompsA;
 }
 
 AnnotBorderStyle::~AnnotBorderStyle() {
@@ -92,7 +80,8 @@ Annot::Annot(PDFDoc *docA, Dict *dict, Ref *refA) {
   double borderWidth;
   double *borderDash;
   int borderDashLength;
-  double borderR, borderG, borderB;
+  double borderColor[4];
+  int nBorderColorComps;
   double t;
   int i;
 
@@ -160,9 +149,11 @@ Annot::Annot(PDFDoc *docA, Dict *dict, Ref *refA) {
   borderWidth = 1;
   borderDash = NULL;
   borderDashLength = 0;
-  borderR = 0;
-  borderG = 0;
-  borderB = 1;
+  nBorderColorComps = 3;
+  borderColor[0] = 0;
+  borderColor[1] = 0;
+  borderColor[2] = 1;
+  borderColor[3] = 0;
   if (dict->lookup("BS", &obj1)->isDict()) {
     if (obj1.dictLookup("S", &obj2)->isName()) {
       if (obj2.isName("S")) {
@@ -223,28 +214,31 @@ Annot::Annot(PDFDoc *docA, Dict *dict, Ref *refA) {
 	  }
 	  obj2.free();
 	}
+      } else {
+	// an empty Border array also means "no border"
+	borderWidth = 0;
       }
     }
   }
   obj1.free();
-  if (dict->lookup("C", &obj1)->isArray() && obj1.arrayGetLength() == 3) {
-    if (obj1.arrayGet(0, &obj2)->isNum()) {
-      borderR = obj2.getNum();
+  if (dict->lookup("C", &obj1)->isArray() &&
+      (obj1.arrayGetLength() == 1 ||
+       obj1.arrayGetLength() == 3 ||
+       obj1.arrayGetLength() == 4)) {
+    nBorderColorComps = obj1.arrayGetLength();
+    for (i = 0; i < nBorderColorComps; ++i) {
+      if (obj1.arrayGet(i, &obj2)->isNum()) {
+	borderColor[i] = obj2.getNum();
+      } else {
+	borderColor[i] = 0;
+      }
+      obj2.free();
     }
-    obj1.free();
-    if (obj1.arrayGet(1, &obj2)->isNum()) {
-      borderG = obj2.getNum();
-    }
-    obj1.free();
-    if (obj1.arrayGet(2, &obj2)->isNum()) {
-      borderB = obj2.getNum();
-    }
-    obj1.free();
   }
   obj1.free();
   borderStyle = new AnnotBorderStyle(borderType, borderWidth,
 				     borderDash, borderDashLength,
-				     borderR, borderG, borderB);
+				     borderColor, nBorderColorComps);
 
   //----- get the appearance state
 
@@ -304,350 +298,188 @@ Annot::~Annot() {
   ocObj.free();
 }
 
-void Annot::generateFieldAppearance(Dict *field, Dict *annot, Dict *acroForm) {
-  Object mkObj, ftObj, appearDict, drObj, obj1, obj2, obj3;
-  Dict *mkDict;
-  MemStream *appearStream;
-  GfxFontDict *fontDict;
-  GBool hasCaption;
-  double w, dx, dy, r;
-  double *dash;
-  GString *caption, *da;
-  GString **text;
-  GBool *selection;
-  int rot, dashLength, ff, quadding, comb, nOptions, topIdx, i, j;
+void Annot::generateAnnotAppearance() {
+  Object obj;
 
-  // must be a Widget annotation
-  if (type && type->cmp("Widget")) {
+  appearance.fetch(doc->getXRef(), &obj);
+  if (!obj.isStream()) {
+    if (type) {
+      if (!type->cmp("Line")) {
+	generateLineAppearance();
+      } else if (!type->cmp("PolyLine")) {
+	generatePolyLineAppearance();
+      } else if (!type->cmp("Polygon")) {
+	generatePolygonAppearance();
+      }
+    }
+  }
+  obj.free();
+}
+
+//~ this doesn't draw the caption
+void Annot::generateLineAppearance() {
+  Object annotObj, gfxStateDict, appearDict, obj1, obj2;
+  MemStream *appearStream;
+  double x1, y1, x2, y2, dx, dy, len, w;
+  double lx1, ly1, lx2, ly2;
+  double tx1, ty1, tx2, ty2;
+  double ax1, ay1, ax2, ay2;
+  double bx1, by1, bx2, by2;
+  double leaderLen, leaderExtLen, leaderOffLen;
+  AnnotLineEndType lineEnd1, lineEnd2;
+  GBool fill;
+
+  if (!getObject(&annotObj)->isDict()) {
+    annotObj.free();
     return;
   }
 
   appearBuf = new GString();
 
-  // get the appearance characteristics (MK) dictionary
-  if (annot->lookup("MK", &mkObj)->isDict()) {
-    mkDict = mkObj.getDict();
-  } else {
-    mkDict = NULL;
-  }
-
-  // draw the background
-  if (mkDict) {
-    if (mkDict->lookup("BG", &obj1)->isArray() &&
-	obj1.arrayGetLength() > 0) {
-      setColor(obj1.getArray(), gTrue, 0);
-      appearBuf->appendf("0 0 {0:.2f} {1:.2f} re f\n",
-			 xMax - xMin, yMax - yMin);
-    }
-    obj1.free();
-  }
-
-  // get the field type
-  fieldLookup(field, acroForm, "FT", &ftObj);
-
-  // get the field flags (Ff) value
-  if (fieldLookup(field, acroForm, "Ff", &obj1)->isInt()) {
-    ff = obj1.getInt();
-  } else {
-    ff = 0;
+  //----- check for transparency
+  if (annotObj.dictLookup("CA", &obj1)->isNum()) {
+    gfxStateDict.initDict(doc->getXRef());
+    gfxStateDict.dictAdd(copyString("ca"), obj1.copy(&obj2));
+    appearBuf->append("/GS1 gs\n");
   }
   obj1.free();
 
-  // draw the border
-  if (mkDict) {
-    w = borderStyle->getWidth();
-    if (w > 0) {
-      mkDict->lookup("BC", &obj1);
-      if (!(obj1.isArray() && obj1.arrayGetLength() > 0)) {
-	mkDict->lookup("BG", &obj1);
-      }
-      if (obj1.isArray() && obj1.arrayGetLength() > 0) {
-	dx = xMax - xMin;
-	dy = yMax - yMin;
-
-	// radio buttons with no caption have a round border
-	hasCaption = mkDict->lookup("CA", &obj2)->isString();
-	obj2.free();
-	if (ftObj.isName("Btn") && (ff & fieldFlagRadio) && !hasCaption) {
-	  r = 0.5 * (dx < dy ? dx : dy);
-	  switch (borderStyle->getType()) {
-	  case annotBorderDashed:
-	    appearBuf->append("[");
-	    borderStyle->getDash(&dash, &dashLength);
-	    for (i = 0; i < dashLength; ++i) {
-	      appearBuf->appendf(" {0:.2f}", dash[i]);
-	    }
-	    appearBuf->append("] 0 d\n");
-	    // fall through to the solid case
-	  case annotBorderSolid:
-	  case annotBorderUnderlined:
-	    appearBuf->appendf("{0:.2f} w\n", w);
-	    setColor(obj1.getArray(), gFalse, 0);
-	    drawCircle(0.5 * dx, 0.5 * dy, r - 0.5 * w, gFalse);
-	    break;
-	  case annotBorderBeveled:
-	  case annotBorderInset:
-	    appearBuf->appendf("{0:.2f} w\n", 0.5 * w);
-	    setColor(obj1.getArray(), gFalse, 0);
-	    drawCircle(0.5 * dx, 0.5 * dy, r - 0.25 * w, gFalse);
-	    setColor(obj1.getArray(), gFalse,
-		     borderStyle->getType() == annotBorderBeveled ? 1 : -1);
-	    drawCircleTopLeft(0.5 * dx, 0.5 * dy, r - 0.75 * w);
-	    setColor(obj1.getArray(), gFalse,
-		     borderStyle->getType() == annotBorderBeveled ? -1 : 1);
-	    drawCircleBottomRight(0.5 * dx, 0.5 * dy, r - 0.75 * w);
-	    break;
-	  }
-
-	} else {
-	  switch (borderStyle->getType()) {
-	  case annotBorderDashed:
-	    appearBuf->append("[");
-	    borderStyle->getDash(&dash, &dashLength);
-	    for (i = 0; i < dashLength; ++i) {
-	      appearBuf->appendf(" {0:.2f}", dash[i]);
-	    }
-	    appearBuf->append("] 0 d\n");
-	    // fall through to the solid case
-	  case annotBorderSolid:
-	    appearBuf->appendf("{0:.2f} w\n", w);
-	    setColor(obj1.getArray(), gFalse, 0);
-	    appearBuf->appendf("{0:.2f} {0:.2f} {1:.2f} {2:.2f} re s\n",
-			       0.5 * w, dx - w, dy - w);
-	    break;
-	  case annotBorderBeveled:
-	  case annotBorderInset:
-	    setColor(obj1.getArray(), gTrue,
-		     borderStyle->getType() == annotBorderBeveled ? 1 : -1);
-	    appearBuf->append("0 0 m\n");
-	    appearBuf->appendf("0 {0:.2f} l\n", dy);
-	    appearBuf->appendf("{0:.2f} {1:.2f} l\n", dx, dy);
-	    appearBuf->appendf("{0:.2f} {1:.2f} l\n", dx - w, dy - w);
-	    appearBuf->appendf("{0:.2f} {1:.2f} l\n", w, dy - w);
-	    appearBuf->appendf("{0:.2f} {0:.2f} l\n", w);
-	    appearBuf->append("f\n");
-	    setColor(obj1.getArray(), gTrue,
-		     borderStyle->getType() == annotBorderBeveled ? -1 : 1);
-	    appearBuf->append("0 0 m\n");
-	    appearBuf->appendf("{0:.2f} 0 l\n", dx);
-	    appearBuf->appendf("{0:.2f} {1:.2f} l\n", dx, dy);
-	    appearBuf->appendf("{0:.2f} {1:.2f} l\n", dx - w, dy - w);
-	    appearBuf->appendf("{0:.2f} {1:.2f} l\n", dx - w, w);
-	    appearBuf->appendf("{0:.2f} {0:.2f} l\n", w);
-	    appearBuf->append("f\n");
-	    break;
-	  case annotBorderUnderlined:
-	    appearBuf->appendf("{0:.2f} w\n", w);
-	    setColor(obj1.getArray(), gFalse, 0);
-	    appearBuf->appendf("0 0 m {0:.2f} 0 l s\n", dx);
-	    break;
-	  }
-
-	  // clip to the inside of the border
-	  appearBuf->appendf("{0:.2f} {0:.2f} {1:.2f} {2:.2f} re W n\n",
-			     w, dx - 2 * w, dy - 2 * w);
-	}
-      }
-      obj1.free();
+  //----- set line style, colors
+  setLineStyle(borderStyle, &w);
+  setStrokeColor(borderStyle->getColor(), borderStyle->getNumColorComps());
+  fill = gFalse;
+  if (annotObj.dictLookup("IC", &obj1)->isArray()) {
+    if (setFillColor(&obj1)) {
+      fill = gTrue;
     }
-  }
-
-  // get the resource dictionary
-  fieldLookup(field, acroForm, "DR", &drObj);
-
-  // build the font dictionary
-  if (drObj.isDict() && drObj.dictLookup("Font", &obj1)->isDict()) {
-    fontDict = new GfxFontDict(doc->getXRef(), NULL, obj1.getDict());
-  } else {
-    fontDict = NULL;
   }
   obj1.free();
 
-  // get the default appearance string
-  if (fieldLookup(field, acroForm, "DA", &obj1)->isNull()) {
-    obj1.free();
-    acroForm->lookup("DA", &obj1);
-  }
-  if (obj1.isString()) {
-    da = obj1.getString()->copy();
-  } else {
-    da = NULL;
-  }
-  obj1.free();
-
-  // get the rotation value
-  rot = 0;
-  if (mkDict) {
-    if (mkDict->lookup("R", &obj1)->isInt()) {
-      rot = obj1.getInt();
-    }
-    obj1.free();
-  }
-
-  // draw the field contents
-  if (ftObj.isName("Btn")) {
-    caption = NULL;
-    if (mkDict) {
-      if (mkDict->lookup("CA", &obj1)->isString()) {
-	caption = obj1.getString()->copy();
-      }
-      obj1.free();
-    }
-    // radio button
-    if (ff & fieldFlagRadio) {
-      //~ Acrobat doesn't draw a caption if there is no AP dict (?)
-      if (fieldLookup(field, acroForm, "V", &obj1)
-	    ->isName(appearanceState->getCString())) {
-	if (caption) {
-	  drawText(caption, da, fontDict, gFalse, 0, fieldQuadCenter,
-		   gFalse, gTrue, rot);
-	} else {
-	  if (mkDict) {
-	    if (mkDict->lookup("BC", &obj2)->isArray() &&
-		obj2.arrayGetLength() > 0) {
-	      dx = xMax - xMin;
-	      dy = yMax - yMin;
-	      setColor(obj2.getArray(), gTrue, 0);
-	      drawCircle(0.5 * dx, 0.5 * dy, 0.2 * (dx < dy ? dx : dy),
-			 gTrue);
-	    }
-	    obj2.free();
-	  }
-	}
-      }
-      obj1.free();
-    // pushbutton
-    } else if (ff & fieldFlagPushbutton) {
-      if (caption) {
-	drawText(caption, da, fontDict, gFalse, 0, fieldQuadCenter,
-		 gFalse, gFalse, rot);
-      }
-    // checkbox
+  //----- get line properties
+  if (annotObj.dictLookup("L", &obj1)->isArray() &&
+      obj1.arrayGetLength() == 4) {
+    if (obj1.arrayGet(0, &obj2)->isNum()) {
+      x1 = obj2.getNum();
     } else {
-      fieldLookup(field, acroForm, "V", &obj1);
-      if (obj1.isName() && !obj1.isName("Off")) {
-	if (!caption) {
-	  caption = new GString("3"); // ZapfDingbats checkmark
-	}
-	drawText(caption, da, fontDict, gFalse, 0, fieldQuadCenter,
-		 gFalse, gTrue, rot);
-      }
-      obj1.free();
-    }
-    if (caption) {
-      delete caption;
-    }
-  } else if (ftObj.isName("Tx")) {
-    //~ value strings can be Unicode
-    if (!fieldLookup(field, acroForm, "V", &obj1)->isString()) {
-      obj1.free();
-      fieldLookup(field, acroForm, "DV", &obj1);
-    }
-    if (obj1.isString()) {
-      if (fieldLookup(field, acroForm, "Q", &obj2)->isInt()) {
-	quadding = obj2.getInt();
-      } else {
-	quadding = fieldQuadLeft;
-      }
       obj2.free();
-      comb = 0;
-      if (ff & fieldFlagComb) {
-	if (fieldLookup(field, acroForm, "MaxLen", &obj2)->isInt()) {
-	  comb = obj2.getInt();
-	}
-	obj2.free();
-      }
-      drawText(obj1.getString(), da, fontDict,
-	       ff & fieldFlagMultiline, comb, quadding, gTrue, gFalse, rot);
-    }
-    obj1.free();
-  } else if (ftObj.isName("Ch")) {
-    //~ value/option strings can be Unicode
-    if (fieldLookup(field, acroForm, "Q", &obj1)->isInt()) {
-      quadding = obj1.getInt();
-    } else {
-      quadding = fieldQuadLeft;
-    }
-    obj1.free();
-    // combo box
-    if (ff & fieldFlagCombo) {
-      if (fieldLookup(field, acroForm, "V", &obj1)->isString()) {
-	drawText(obj1.getString(), da, fontDict,
-		 gFalse, 0, quadding, gTrue, gFalse, rot);
-	//~ Acrobat draws a popup icon on the right side
-      }
       obj1.free();
-    // list box
-    } else {
-      if (field->lookup("Opt", &obj1)->isArray()) {
-	nOptions = obj1.arrayGetLength();
-	// get the option text
-	text = (GString **)gmallocn(nOptions, sizeof(GString *));
-	for (i = 0; i < nOptions; ++i) {
-	  text[i] = NULL;
-	  obj1.arrayGet(i, &obj2);
-	  if (obj2.isString()) {
-	    text[i] = obj2.getString()->copy();
-	  } else if (obj2.isArray() && obj2.arrayGetLength() == 2) {
-	    if (obj2.arrayGet(1, &obj3)->isString()) {
-	      text[i] = obj3.getString()->copy();
-	    }
-	    obj3.free();
-	  }
-	  obj2.free();
-	  if (!text[i]) {
-	    text[i] = new GString();
-	  }
-	}
-	// get the selected option(s)
-	selection = (GBool *)gmallocn(nOptions, sizeof(GBool));
-	//~ need to use the I field in addition to the V field
-	fieldLookup(field, acroForm, "V", &obj2);
-	for (i = 0; i < nOptions; ++i) {
-	  selection[i] = gFalse;
-	  if (obj2.isString()) {
-	    if (!obj2.getString()->cmp(text[i])) {
-	      selection[i] = gTrue;
-	    }
-	  } else if (obj2.isArray()) {
-	    for (j = 0; j < obj2.arrayGetLength(); ++j) {
-	      if (obj2.arrayGet(j, &obj3)->isString() &&
-		  !obj3.getString()->cmp(text[i])) {
-		selection[i] = gTrue;
-	      }
-	      obj3.free();
-	    }
-	  }
-	}
-	obj2.free();
-	// get the top index
-	if (field->lookup("TI", &obj2)->isInt()) {
-	  topIdx = obj2.getInt();
-	} else {
-	  topIdx = 0;
-	}
-	obj2.free();
-	// draw the text
-	drawListBox(text, selection, nOptions, topIdx, da, fontDict, quadding);
-	for (i = 0; i < nOptions; ++i) {
-	  delete text[i];
-	}
-	gfree(text);
-	gfree(selection);
-      }
-      obj1.free();
+      goto err1;
     }
-  } else if (ftObj.isName("Sig")) {
-    //~unimp
+    obj2.free();
+    if (obj1.arrayGet(1, &obj2)->isNum()) {
+      y1 = obj2.getNum();
+    } else {
+      obj2.free();
+      obj1.free();
+      goto err1;
+    }
+    obj2.free();
+    if (obj1.arrayGet(2, &obj2)->isNum()) {
+      x2 = obj2.getNum();
+    } else {
+      obj2.free();
+      obj1.free();
+      goto err1;
+    }
+    obj2.free();
+    if (obj1.arrayGet(3, &obj2)->isNum()) {
+      y2 = obj2.getNum();
+    } else {
+      obj2.free();
+      obj1.free();
+      goto err1;
+    }
+    obj2.free();
   } else {
-    error(errSyntaxError, -1, "Unknown field type");
+    obj1.free();
+    goto err1;
+  }
+  obj1.free();
+  lineEnd1 = lineEnd2 = annotLineEndNone;
+  if (annotObj.dictLookup("LE", &obj1)->isArray() &&
+      obj1.arrayGetLength() == 2) {
+    lineEnd1 = parseLineEndType(obj1.arrayGet(0, &obj2));
+    obj2.free();
+    lineEnd2 = parseLineEndType(obj1.arrayGet(1, &obj2));
+    obj2.free();
+  }
+  obj1.free();
+  if (annotObj.dictLookup("LL", &obj1)->isNum()) {
+    leaderLen = obj1.getNum();
+  } else {
+    leaderLen = 0;
+  }
+  obj1.free();
+  if (annotObj.dictLookup("LLE", &obj1)->isNum()) {
+    leaderExtLen = obj1.getNum();
+  } else {
+    leaderExtLen = 0;
+  }
+  obj1.free();
+  if (annotObj.dictLookup("LLO", &obj1)->isNum()) {
+    leaderOffLen = obj1.getNum();
+  } else {
+    leaderOffLen = 0;
+  }
+  obj1.free();
+
+  //----- compute positions
+  x1 -= xMin;
+  y1 -= yMin;
+  x2 -= xMin;
+  y2 -= yMin;
+  dx = x2 - x1;
+  dy = y2 - y1;
+  len = sqrt(dx*dx + dy*dy);
+  if (len > 0) {
+    dx /= len;
+    dy /= len;
+  }
+  if (leaderLen != 0) {
+    ax1 = x1 + leaderOffLen * dy;
+    ay1 = y1 - leaderOffLen * dx;
+    lx1 = ax1 + leaderLen * dy;
+    ly1 = ay1 - leaderLen * dx;
+    bx1 = lx1 + leaderExtLen * dy;
+    by1 = ly1 - leaderExtLen * dx;
+    ax2 = x2 + leaderOffLen * dy;
+    ay2 = y2 - leaderOffLen * dx;
+    lx2 = ax2 + leaderLen * dy;
+    ly2 = ay2 - leaderLen * dx;
+    bx2 = lx2 + leaderExtLen * dy;
+    by2 = ly2 - leaderExtLen * dx;
+  } else {
+    lx1 = x1;
+    ly1 = y1;
+    lx2 = x2;
+    ly2 = y2;
+    ax1 = ay1 = ax2 = ay2 = 0; // make gcc happy
+    bx1 = by1 = bx2 = by2 = 0;
+  }
+  adjustLineEndpoint(lineEnd1, lx1, ly1, dx, dy, w, &tx1, &ty1);
+  adjustLineEndpoint(lineEnd2, lx2, ly2, -dx, -dy, w, &tx2, &ty2);
+
+  //----- draw leaders
+  if (leaderLen != 0) {
+    appearBuf->appendf("{0:.4f} {1:.4f} m {2:.4f} {3:.4f} l\n",
+		       ax1, ay1, bx1, by1);
+    appearBuf->appendf("{0:.4f} {1:.4f} m {2:.4f} {3:.4f} l\n",
+		       ax2, ay2 , bx2, by2);
   }
 
-  if (da) {
-    delete da;
-  }
+  //----- draw the line
+  appearBuf->appendf("{0:.4f} {1:.4f} m {2:.4f} {3:.4f} l\n",
+		     tx1, ty1, tx2, ty2);
+  appearBuf->append("S\n");
 
-  // build the appearance stream dictionary
+  //----- draw the arrows
+  if (borderStyle->getType() == annotBorderDashed) {
+    appearBuf->append("[] 0 d\n");
+  }
+  drawLineArrow(lineEnd1, lx1, ly1, dx, dy, w, fill);
+  drawLineArrow(lineEnd2, lx2, ly2, -dx, -dy, w, fill);
+
+  //----- build the appearance stream dictionary
   appearDict.initDict(doc->getXRef());
   appearDict.dictAdd(copyString("Length"),
 		     obj1.initInt(appearBuf->getLength()));
@@ -658,757 +490,482 @@ void Annot::generateFieldAppearance(Dict *field, Dict *annot, Dict *acroForm) {
   obj1.arrayAdd(obj2.initReal(xMax - xMin));
   obj1.arrayAdd(obj2.initReal(yMax - yMin));
   appearDict.dictAdd(copyString("BBox"), &obj1);
-
-  // set the resource dictionary
-  if (drObj.isDict()) {
-    appearDict.dictAdd(copyString("Resources"), drObj.copy(&obj1));
+  if (gfxStateDict.isDict()) {
+    obj1.initDict(doc->getXRef());
+    obj2.initDict(doc->getXRef());
+    obj2.dictAdd(copyString("GS1"), &gfxStateDict);
+    obj1.dictAdd(copyString("ExtGState"), &obj2);
+    appearDict.dictAdd(copyString("Resources"), &obj1);
   }
-  drObj.free();
 
-  // build the appearance stream
+  //----- build the appearance stream
   appearStream = new MemStream(appearBuf->getCString(), 0,
 			       appearBuf->getLength(), &appearDict);
   appearance.free();
   appearance.initStream(appearStream);
 
-  if (fontDict) {
-    delete fontDict;
-  }
-  ftObj.free();
-  mkObj.free();
+ err1:
+  annotObj.free();
 }
 
-// Set the current fill or stroke color, based on <a> (which should
-// have 1, 3, or 4 elements).  If <adjust> is +1, color is brightened;
-// if <adjust> is -1, color is darkened; otherwise color is not
-// modified.
-void Annot::setColor(Array *a, GBool fill, int adjust) {
-  Object obj1;
-  double color[4];
-  int nComps, i;
+//~ this doesn't handle line ends (arrows)
+void Annot::generatePolyLineAppearance() {
+  Object annotObj, gfxStateDict, appearDict, obj1, obj2;
+  MemStream *appearStream;
+  double x1, y1, w;
+  int i;
 
-  nComps = a->getLength();
-  if (nComps > 4) {
-    nComps = 4;
+  if (!getObject(&annotObj)->isDict()) {
+    annotObj.free();
+    return;
   }
-  for (i = 0; i < nComps && i < 4; ++i) {
-    if (a->get(i, &obj1)->isNum()) {
-      color[i] = obj1.getNum();
+
+  appearBuf = new GString();
+
+  //----- check for transparency
+  if (annotObj.dictLookup("CA", &obj1)->isNum()) {
+    gfxStateDict.initDict(doc->getXRef());
+    gfxStateDict.dictAdd(copyString("ca"), obj1.copy(&obj2));
+    appearBuf->append("/GS1 gs\n");
+  }
+  obj1.free();
+
+  //----- set line style, colors
+  setLineStyle(borderStyle, &w);
+  setStrokeColor(borderStyle->getColor(), borderStyle->getNumColorComps());
+  // fill = gFalse;
+  // if (annotObj.dictLookup("IC", &obj1)->isArray()) {
+  //   if (setFillColor(&obj1)) {
+  //     fill = gTrue;
+  //   }
+  // }
+  // obj1.free();
+
+  //----- draw line
+  if (!annotObj.dictLookup("Vertices", &obj1)->isArray()) {
+    obj1.free();
+    goto err1;
+  }
+  for (i = 0; i+1 < obj1.arrayGetLength(); i += 2) {
+    if (!obj1.arrayGet(i, &obj2)->isNum()) {
+      obj2.free();
+      obj1.free();
+      goto err1;
+    }
+    x1 = obj2.getNum();
+    obj2.free();
+    if (!obj1.arrayGet(i+1, &obj2)->isNum()) {
+      obj2.free();
+      obj1.free();
+      goto err1;
+    }
+    y1 = obj2.getNum();
+    obj2.free();
+    x1 -= xMin;
+    y1 -= yMin;
+    if (i == 0) {
+      appearBuf->appendf("{0:.4f} {1:.4f} m\n", x1, y1);
+    } else {
+      appearBuf->appendf("{0:.4f} {1:.4f} l\n", x1, y1);
+    }
+  }
+  appearBuf->append("S\n");
+  obj1.free();
+
+  //----- build the appearance stream dictionary
+  appearDict.initDict(doc->getXRef());
+  appearDict.dictAdd(copyString("Length"),
+		     obj1.initInt(appearBuf->getLength()));
+  appearDict.dictAdd(copyString("Subtype"), obj1.initName("Form"));
+  obj1.initArray(doc->getXRef());
+  obj1.arrayAdd(obj2.initReal(0));
+  obj1.arrayAdd(obj2.initReal(0));
+  obj1.arrayAdd(obj2.initReal(xMax - xMin));
+  obj1.arrayAdd(obj2.initReal(yMax - yMin));
+  appearDict.dictAdd(copyString("BBox"), &obj1);
+  if (gfxStateDict.isDict()) {
+    obj1.initDict(doc->getXRef());
+    obj2.initDict(doc->getXRef());
+    obj2.dictAdd(copyString("GS1"), &gfxStateDict);
+    obj1.dictAdd(copyString("ExtGState"), &obj2);
+    appearDict.dictAdd(copyString("Resources"), &obj1);
+  }
+
+  //----- build the appearance stream
+  appearStream = new MemStream(appearBuf->getCString(), 0,
+			       appearBuf->getLength(), &appearDict);
+  appearance.free();
+  appearance.initStream(appearStream);
+
+ err1:
+  annotObj.free();
+}
+
+void Annot::generatePolygonAppearance() {
+  Object annotObj, gfxStateDict, appearDict, obj1, obj2;
+  MemStream *appearStream;
+  double x1, y1;
+  int i;
+
+  if (!getObject(&annotObj)->isDict()) {
+    annotObj.free();
+    return;
+  }
+
+  appearBuf = new GString();
+
+  //----- check for transparency
+  if (annotObj.dictLookup("CA", &obj1)->isNum()) {
+    gfxStateDict.initDict(doc->getXRef());
+    gfxStateDict.dictAdd(copyString("ca"), obj1.copy(&obj2));
+    appearBuf->append("/GS1 gs\n");
+  }
+  obj1.free();
+
+  //----- set fill color
+  if (!annotObj.dictLookup("IC", &obj1)->isArray()  ||
+      !setFillColor(&obj1)) {
+    obj1.free();
+    goto err1;
+  }
+  obj1.free();
+
+  //----- fill polygon
+  if (!annotObj.dictLookup("Vertices", &obj1)->isArray()) {
+    obj1.free();
+    goto err1;
+  }
+  for (i = 0; i+1 < obj1.arrayGetLength(); i += 2) {
+    if (!obj1.arrayGet(i, &obj2)->isNum()) {
+      obj2.free();
+      obj1.free();
+      goto err1;
+    }
+    x1 = obj2.getNum();
+    obj2.free();
+    if (!obj1.arrayGet(i+1, &obj2)->isNum()) {
+      obj2.free();
+      obj1.free();
+      goto err1;
+    }
+    y1 = obj2.getNum();
+    obj2.free();
+    x1 -= xMin;
+    y1 -= yMin;
+    if (i == 0) {
+      appearBuf->appendf("{0:.4f} {1:.4f} m\n", x1, y1);
+    } else {
+      appearBuf->appendf("{0:.4f} {1:.4f} l\n", x1, y1);
+    }
+  }
+  appearBuf->append("f\n");
+  obj1.free();
+
+  //----- build the appearance stream dictionary
+  appearDict.initDict(doc->getXRef());
+  appearDict.dictAdd(copyString("Length"),
+		     obj1.initInt(appearBuf->getLength()));
+  appearDict.dictAdd(copyString("Subtype"), obj1.initName("Form"));
+  obj1.initArray(doc->getXRef());
+  obj1.arrayAdd(obj2.initReal(0));
+  obj1.arrayAdd(obj2.initReal(0));
+  obj1.arrayAdd(obj2.initReal(xMax - xMin));
+  obj1.arrayAdd(obj2.initReal(yMax - yMin));
+  appearDict.dictAdd(copyString("BBox"), &obj1);
+  if (gfxStateDict.isDict()) {
+    obj1.initDict(doc->getXRef());
+    obj2.initDict(doc->getXRef());
+    obj2.dictAdd(copyString("GS1"), &gfxStateDict);
+    obj1.dictAdd(copyString("ExtGState"), &obj2);
+    appearDict.dictAdd(copyString("Resources"), &obj1);
+  }
+
+  //----- build the appearance stream
+  appearStream = new MemStream(appearBuf->getCString(), 0,
+			       appearBuf->getLength(), &appearDict);
+  appearance.free();
+  appearance.initStream(appearStream);
+
+ err1:
+  annotObj.free();
+}
+
+void Annot::setLineStyle(AnnotBorderStyle *bs, double *lineWidth) {
+  double *dash;
+  double w;
+  int dashLength, i;
+
+  if ((w = borderStyle->getWidth()) <= 0) {
+    w = 0.1;
+  }
+  *lineWidth = w;
+  appearBuf->appendf("{0:.4f} w\n", w);
+  // this treats beveled/inset/underline as solid
+  if (borderStyle->getType() == annotBorderDashed) {
+    borderStyle->getDash(&dash, &dashLength);
+    appearBuf->append("[");
+    for (i = 0; i < dashLength; ++i) {
+      appearBuf->appendf(" {0:.4f}", dash[i]);
+    }
+    appearBuf->append("] 0 d\n");
+  }
+  appearBuf->append("0 j\n0 J\n");
+}
+
+void Annot::setStrokeColor(double *color, int nComps) {
+  switch (nComps) {
+  case 0:
+    appearBuf->append("0 G\n");
+    break;
+  case 1:
+    appearBuf->appendf("{0:.2f} G\n", color[0]);
+    break;
+  case 3:
+    appearBuf->appendf("{0:.2f} {1:.2f} {2:.2f} RG\n",
+		       color[0], color[1], color[2]);
+    break;
+  case 4:
+    appearBuf->appendf("{0:.2f} {1:.2f} {2:.2f} {3:.2f} K\n",
+		       color[0], color[1], color[2], color[3]);
+    break;
+  }
+}
+
+GBool Annot::setFillColor(Object *colorObj) {
+  Object obj;
+  double color[4];
+  int i;
+
+  if (!colorObj->isArray()) {
+    return gFalse;
+  }
+  for (i = 0; i < colorObj->arrayGetLength(); ++i) {
+    if (colorObj->arrayGet(i, &obj)->isNum()) {
+      color[i] = obj.getNum();
     } else {
       color[i] = 0;
     }
-    obj1.free();
+    obj.free();
   }
-  if (nComps == 4) {
-    adjust = -adjust;
+  switch (colorObj->arrayGetLength()) {
+  case 1:
+    appearBuf->appendf("{0:.2f} g\n", color[0]);
+    return gTrue;
+  case 3:
+    appearBuf->appendf("{0:.2f} {1:.2f} {2:.2f} rg\n",
+		       color[0], color[1], color[2]);
+    return gTrue;
+  case 4:
+    appearBuf->appendf("{0:.2f} {1:.2f} {2:.2f} {3:.3f} k\n",
+		       color[0], color[1],
+		       color[2], color[3]);
+    return gTrue;
   }
-  if (adjust > 0) {
-    for (i = 0; i < nComps; ++i) {
-      color[i] = 0.5 * color[i] + 0.5;
-    }
-  } else if (adjust < 0) {
-    for (i = 0; i < nComps; ++i) {
-      color[i] = 0.5 * color[i];
-    }
-  }
-  if (nComps == 4) {
-    appearBuf->appendf("{0:.2f} {1:.2f} {2:.2f} {3:.2f} {4:c}\n",
-		       color[0], color[1], color[2], color[3],
-		       fill ? 'k' : 'K');
-  } else if (nComps == 3) {
-    appearBuf->appendf("{0:.2f} {1:.2f} {2:.2f} {3:s}\n",
-		       color[0], color[1], color[2],
-		       fill ? "rg" : "RG");
+  return gFalse;
+}
+
+AnnotLineEndType Annot::parseLineEndType(Object *obj) {
+  if (obj->isName("None")) {
+    return annotLineEndNone;
+  } else if (obj->isName("Square")) {
+    return annotLineEndSquare;
+  } else if (obj->isName("Circle")) {
+    return annotLineEndCircle;
+  } else if (obj->isName("Diamond")) {
+    return annotLineEndDiamond;
+  } else if (obj->isName("OpenArrow")) {
+    return annotLineEndOpenArrow;
+  } else if (obj->isName("ClosedArrow")) {
+    return annotLineEndClosedArrow;
+  } else if (obj->isName("Butt")) {
+    return annotLineEndButt;
+  } else if (obj->isName("ROpenArrow")) {
+    return annotLineEndROpenArrow;
+  } else if (obj->isName("RClosedArrow")) {
+    return annotLineEndRClosedArrow;
+  } else if (obj->isName("Slash")) {
+    return annotLineEndSlash;
   } else {
-    appearBuf->appendf("{0:.2f} {1:c}\n",
-		       color[0],
-		       fill ? 'g' : 'G');
+    return annotLineEndNone;
   }
 }
 
-// Draw the variable text or caption for a field.
-void Annot::drawText(GString *text, GString *da, GfxFontDict *fontDict,
-		     GBool multiline, int comb, int quadding,
-		     GBool txField, GBool forceZapfDingbats, int rot) {
-  GString *text2;
-  GList *daToks;
-  GString *tok;
-  GfxFont *font;
-  double dx, dy;
-  double fontSize, fontSize2, border, x, xPrev, y, w, w2, wMax;
-  int tfPos, tmPos, i, j, k, c;
-
-  //~ if there is no MK entry, this should use the existing content stream,
-  //~ and only replace the marked content portion of it
-  //~ (this is only relevant for Tx fields)
-
-  // check for a Unicode string
-  //~ this currently drops all non-Latin1 characters
-  if (text->getLength() >= 2 &&
-      text->getChar(0) == '\xfe' && text->getChar(1) == '\xff') {
-    text2 = new GString();
-    for (i = 2; i+1 < text->getLength(); i += 2) {
-      c = ((text->getChar(i) & 0xff) << 8) + (text->getChar(i+1) & 0xff);
-      if (c <= 0xff) {
-	text2->append((char)c);
-      } else {
-	text2->append('?');
-      }
-    }
-  } else {
-    text2 = text;
+void Annot::adjustLineEndpoint(AnnotLineEndType lineEnd,
+			       double x, double y, double dx, double dy,
+			       double w, double *tx, double *ty) {
+  switch (lineEnd) {
+  case annotLineEndNone:
+    w = 0;
+    break;
+  case annotLineEndSquare:
+    w *= lineEndSize1;
+    break;
+  case annotLineEndCircle:
+    w *= lineEndSize1;
+    break;
+  case annotLineEndDiamond:
+    w *= lineEndSize1;
+    break;
+  case annotLineEndOpenArrow:
+    w = 0;
+    break;
+  case annotLineEndClosedArrow:
+    w *= lineEndSize2 * cos(lineArrowAngle);
+    break;
+  case annotLineEndButt:
+    w = 0;
+    break;
+  case annotLineEndROpenArrow:
+    w *= lineEndSize2 * cos(lineArrowAngle);
+    break;
+  case annotLineEndRClosedArrow:
+    w *= lineEndSize2 * cos(lineArrowAngle);
+    break;
+  case annotLineEndSlash:
+    w = 0;
+    break;
   }
-
-  // parse the default appearance string
-  tfPos = tmPos = -1;
-  if (da) {
-    daToks = new GList();
-    i = 0;
-    while (i < da->getLength()) {
-      while (i < da->getLength() && Lexer::isSpace(da->getChar(i))) {
-	++i;
-      }
-      if (i < da->getLength()) {
-	for (j = i + 1;
-	     j < da->getLength() && !Lexer::isSpace(da->getChar(j));
-	     ++j) ;
-	daToks->append(new GString(da, i, j - i));
-	i = j;
-      }
-    }
-    for (i = 2; i < daToks->getLength(); ++i) {
-      if (i >= 2 && !((GString *)daToks->get(i))->cmp("Tf")) {
-	tfPos = i - 2;
-      } else if (i >= 6 && !((GString *)daToks->get(i))->cmp("Tm")) {
-	tmPos = i - 6;
-      }
-    }
-  } else {
-    daToks = NULL;
-  }
-
-  // force ZapfDingbats
-  //~ this should create the font if needed (?)
-  if (forceZapfDingbats) {
-    if (tfPos >= 0) {
-      tok = (GString *)daToks->get(tfPos);
-      if (tok->cmp("/ZaDb")) {
-	tok->clear();
-	tok->append("/ZaDb");
-      }
-    }
-  }
-
-  // get the font and font size
-  font = NULL;
-  fontSize = 0;
-  if (tfPos >= 0) {
-    tok = (GString *)daToks->get(tfPos);
-    if (tok->getLength() >= 1 && tok->getChar(0) == '/') {
-      if (!fontDict || !(font = fontDict->lookup(tok->getCString() + 1))) {
-	error(errSyntaxError, -1, "Unknown font in field's DA string");
-      }
-    } else {
-      error(errSyntaxError, -1,
-	    "Invalid font name in 'Tf' operator in field's DA string");
-    }
-    tok = (GString *)daToks->get(tfPos + 1);
-    fontSize = atof(tok->getCString());
-  } else {
-    error(errSyntaxError, -1, "Missing 'Tf' operator in field's DA string");
-  }
-
-  // get the border width
-  border = borderStyle->getWidth();
-
-  // setup
-  if (txField) {
-    appearBuf->append("/Tx BMC\n");
-  }
-  appearBuf->append("q\n");
-  if (rot == 90) {
-    appearBuf->appendf("0 1 -1 0 {0:.2f} 0 cm\n", xMax - xMin);
-    dx = yMax - yMin;
-    dy = xMax - xMin;
-  } else if (rot == 180) {
-    appearBuf->appendf("-1 0 0 -1 {0:.2f} {1:.2f} cm\n",
-		       xMax - xMin, yMax - yMin);
-    dx = xMax - yMax;
-    dy = yMax - yMin;
-  } else if (rot == 270) {
-    appearBuf->appendf("0 -1 1 0 0 {0:.2f} cm\n", yMax - yMin);
-    dx = yMax - yMin;
-    dy = xMax - xMin;
-  } else { // assume rot == 0
-    dx = xMax - xMin;
-    dy = yMax - yMin;
-  }
-  appearBuf->append("BT\n");
-
-  // multi-line text
-  if (multiline) {
-    // note: the comb flag is ignored in multiline mode
-
-    wMax = dx - 2 * border - 4;
-
-    // compute font autosize
-    if (fontSize == 0) {
-      for (fontSize = 20; fontSize > 1; --fontSize) {
-	y = dy - 3;
-	w2 = 0;
-	i = 0;
-	while (i < text2->getLength()) {
-	  getNextLine(text2, i, font, fontSize, wMax, &j, &w, &k);
-	  if (w > w2) {
-	    w2 = w;
-	  }
-	  i = k;
-	  y -= fontSize;
-	}
-	// approximate the descender for the last line
-	if (y >= 0.33 * fontSize) {
-	  break;
-	}
-      }
-      if (tfPos >= 0) {
-	tok = (GString *)daToks->get(tfPos + 1);
-	tok->clear();
-	tok->appendf("{0:.2f}", fontSize);
-      }
-    }
-
-    // starting y coordinate
-    // (note: each line of text starts with a Td operator that moves
-    // down a line)
-    y = dy - 3;
-
-    // set the font matrix
-    if (tmPos >= 0) {
-      tok = (GString *)daToks->get(tmPos + 4);
-      tok->clear();
-      tok->append('0');
-      tok = (GString *)daToks->get(tmPos + 5);
-      tok->clear();
-      tok->appendf("{0:.2f}", y);
-    }
-
-    // write the DA string
-    if (daToks) {
-      for (i = 0; i < daToks->getLength(); ++i) {
-	appearBuf->append((GString *)daToks->get(i))->append(' ');
-      }
-    }
-
-    // write the font matrix (if not part of the DA string)
-    if (tmPos < 0) {
-      appearBuf->appendf("1 0 0 1 0 {0:.2f} Tm\n", y);
-    }
-
-    // write a series of lines of text
-    i = 0;
-    xPrev = 0;
-    while (i < text2->getLength()) {
-
-      getNextLine(text2, i, font, fontSize, wMax, &j, &w, &k);
-
-      // compute text start position
-      switch (quadding) {
-      case fieldQuadLeft:
-      default:
-	x = border + 2;
-	break;
-      case fieldQuadCenter:
-	x = (dx - w) / 2;
-	break;
-      case fieldQuadRight:
-	x = dx - border - 2 - w;
-	break;
-      }
-
-      // draw the line
-      appearBuf->appendf("{0:.2f} {1:.2f} Td\n", x - xPrev, -fontSize);
-      appearBuf->append('(');
-      for (; i < j; ++i) {
-	c = text2->getChar(i) & 0xff;
-	if (c == '(' || c == ')' || c == '\\') {
-	  appearBuf->append('\\');
-	  appearBuf->append(c);
-	} else if (c < 0x20 || c >= 0x80) {
-	  appearBuf->appendf("\\{0:03o}", c);
-	} else {
-	  appearBuf->append(c);
-	}
-      }
-      appearBuf->append(") Tj\n");
-
-      // next line
-      i = k;
-      xPrev = x;
-    }
-
-  // single-line text
-  } else {
-    //~ replace newlines with spaces? - what does Acrobat do?
-
-    // comb formatting
-    if (comb > 0) {
-
-      // compute comb spacing
-      w = (dx - 2 * border) / comb;
-
-      // compute font autosize
-      if (fontSize == 0) {
-	fontSize = dy - 2 * border;
-	if (w < fontSize) {
-	  fontSize = w;
-	}
-	fontSize = floor(fontSize);
-	if (tfPos >= 0) {
-	  tok = (GString *)daToks->get(tfPos + 1);
-	  tok->clear();
-	  tok->appendf("{0:.2f}", fontSize);
-	}
-      }
-
-      // compute text start position
-      switch (quadding) {
-      case fieldQuadLeft:
-      default:
-	x = border + 2;
-	break;
-      case fieldQuadCenter:
-	x = border + 2 + 0.5 * (comb - text2->getLength()) * w;
-	break;
-      case fieldQuadRight:
-	x = border + 2 + (comb - text2->getLength()) * w;
-	break;
-      }
-      y = 0.5 * dy - 0.4 * fontSize;
-
-      // set the font matrix
-      if (tmPos >= 0) {
-	tok = (GString *)daToks->get(tmPos + 4);
-	tok->clear();
-	tok->appendf("{0:.2f}", x);
-	tok = (GString *)daToks->get(tmPos + 5);
-	tok->clear();
-	tok->appendf("{0:.2f}", y);
-      }
-
-      // write the DA string
-      if (daToks) {
-	for (i = 0; i < daToks->getLength(); ++i) {
-	  appearBuf->append((GString *)daToks->get(i))->append(' ');
-	}
-      }
-
-      // write the font matrix (if not part of the DA string)
-      if (tmPos < 0) {
-	appearBuf->appendf("1 0 0 1 {0:.2f} {1:.2f} Tm\n", x, y);
-      }
-
-      // write the text string
-      //~ this should center (instead of left-justify) each character within
-      //~     its comb cell
-      for (i = 0; i < text2->getLength(); ++i) {
-	if (i > 0) {
-	  appearBuf->appendf("{0:.2f} 0 Td\n", w);
-	}
-	appearBuf->append('(');
-	c = text2->getChar(i) & 0xff;
-	if (c == '(' || c == ')' || c == '\\') {
-	  appearBuf->append('\\');
-	  appearBuf->append(c);
-	} else if (c < 0x20 || c >= 0x80) {
-	  appearBuf->appendf("{0:.2f} 0 Td\n", w);
-	} else {
-	  appearBuf->append(c);
-	}
-	appearBuf->append(") Tj\n");
-      }
-
-    // regular (non-comb) formatting
-    } else {
-
-      // compute string width
-      if (font && !font->isCIDFont()) {
-	w = 0;
-	for (i = 0; i < text2->getLength(); ++i) {
-	  w += ((Gfx8BitFont *)font)->getWidth(text2->getChar(i));
-	}
-      } else {
-	// otherwise, make a crude estimate
-	w = text2->getLength() * 0.5;
-      }
-
-      // compute font autosize
-      if (fontSize == 0) {
-	fontSize = dy - 2 * border;
-	fontSize2 = (dx - 4 - 2 * border) / w;
-	if (fontSize2 < fontSize) {
-	  fontSize = fontSize2;
-	}
-	fontSize = floor(fontSize);
-	if (tfPos >= 0) {
-	  tok = (GString *)daToks->get(tfPos + 1);
-	  tok->clear();
-	  tok->appendf("{0:.2f}", fontSize);
-	}
-      }
-
-      // compute text start position
-      w *= fontSize;
-      switch (quadding) {
-      case fieldQuadLeft:
-      default:
-	x = border + 2;
-	break;
-      case fieldQuadCenter:
-	x = (dx - w) / 2;
-	break;
-      case fieldQuadRight:
-	x = dx - border - 2 - w;
-	break;
-      }
-      y = 0.5 * dy - 0.4 * fontSize;
-
-      // set the font matrix
-      if (tmPos >= 0) {
-	tok = (GString *)daToks->get(tmPos + 4);
-	tok->clear();
-	tok->appendf("{0:.2f}", x);
-	tok = (GString *)daToks->get(tmPos + 5);
-	tok->clear();
-	tok->appendf("{0:.2f}", y);
-      }
-
-      // write the DA string
-      if (daToks) {
-	for (i = 0; i < daToks->getLength(); ++i) {
-	  appearBuf->append((GString *)daToks->get(i))->append(' ');
-	}
-      }
-
-      // write the font matrix (if not part of the DA string)
-      if (tmPos < 0) {
-	appearBuf->appendf("1 0 0 1 {0:.2f} {1:.2f} Tm\n", x, y);
-      }
-
-      // write the text string
-      appearBuf->append('(');
-      for (i = 0; i < text2->getLength(); ++i) {
-	c = text2->getChar(i) & 0xff;
-	if (c == '(' || c == ')' || c == '\\') {
-	  appearBuf->append('\\');
-	  appearBuf->append(c);
-	} else if (c < 0x20 || c >= 0x80) {
-	  appearBuf->appendf("\\{0:03o}", c);
-	} else {
-	  appearBuf->append(c);
-	}
-      }
-      appearBuf->append(") Tj\n");
-    }
-  }
-
-  // cleanup
-  appearBuf->append("ET\n");
-  appearBuf->append("Q\n");
-  if (txField) {
-    appearBuf->append("EMC\n");
-  }
-
-  if (daToks) {
-    deleteGList(daToks, GString);
-  }
-  if (text2 != text) {
-    delete text2;
-  }
+  *tx = x + w * dx;
+  *ty = y + w * dy;
 }
 
-// Draw the variable text or caption for a field.
-void Annot::drawListBox(GString **text, GBool *selection,
-			int nOptions, int topIdx,
-			GString *da, GfxFontDict *fontDict, GBool quadding) {
-  GList *daToks;
-  GString *tok;
-  GfxFont *font;
-  double fontSize, fontSize2, border, x, y, w, wMax;
-  int tfPos, tmPos, i, j, c;
-
-  //~ if there is no MK entry, this should use the existing content stream,
-  //~ and only replace the marked content portion of it
-  //~ (this is only relevant for Tx fields)
-
-  // parse the default appearance string
-  tfPos = tmPos = -1;
-  if (da) {
-    daToks = new GList();
-    i = 0;
-    while (i < da->getLength()) {
-      while (i < da->getLength() && Lexer::isSpace(da->getChar(i))) {
-	++i;
-      }
-      if (i < da->getLength()) {
-	for (j = i + 1;
-	     j < da->getLength() && !Lexer::isSpace(da->getChar(j));
-	     ++j) ;
-	daToks->append(new GString(da, i, j - i));
-	i = j;
-      }
-    }
-    for (i = 2; i < daToks->getLength(); ++i) {
-      if (i >= 2 && !((GString *)daToks->get(i))->cmp("Tf")) {
-	tfPos = i - 2;
-      } else if (i >= 6 && !((GString *)daToks->get(i))->cmp("Tm")) {
-	tmPos = i - 6;
-      }
-    }
-  } else {
-    daToks = NULL;
+void Annot::drawLineArrow(AnnotLineEndType lineEnd,
+			  double x, double y, double dx, double dy,
+			  double w, GBool fill) {
+  switch (lineEnd) {
+  case annotLineEndNone:
+    break;
+  case annotLineEndSquare:
+    w *= lineEndSize1;
+    appearBuf->appendf("{0:.4f} {1:.4f} m\n",
+		       x + w*dx + 0.5*w*dy,
+		       y + w*dy - 0.5*w*dx);
+    appearBuf->appendf("{0:.4f} {1:.4f} l\n",
+		       x + 0.5*w*dy,
+		       y - 0.5*w*dx);
+    appearBuf->appendf("{0:.4f} {1:.4f} l\n",
+		       x - 0.5*w*dy,
+		       y + 0.5*w*dx);
+    appearBuf->appendf("{0:.4f} {1:.4f} l\n",
+		       x + w*dx - 0.5*w*dy,
+		       y + w*dy + 0.5*w*dx);
+    appearBuf->append(fill ? "b\n" : "s\n");
+    break;
+  case annotLineEndCircle:
+    w *= lineEndSize1;
+    drawCircle(x + 0.5*w*dx, y + 0.5*w*dy, 0.5*w, fill ? "b" : "s");
+    break;
+  case annotLineEndDiamond:
+    w *= lineEndSize1;
+    appearBuf->appendf("{0:.4f} {1:.4f} m\n", x, y);
+    appearBuf->appendf("{0:.4f} {1:.4f} l\n",
+		       x + 0.5*w*dx - 0.5*w*dy,
+		       y + 0.5*w*dy + 0.5*w*dx);
+    appearBuf->appendf("{0:.4f} {1:.4f} l\n",
+		       x + w*dx,
+		       y + w*dy);
+    appearBuf->appendf("{0:.4f} {1:.4f} l\n",
+		       x + 0.5*w*dx + 0.5*w*dy,
+		       y + 0.5*w*dy - 0.5*w*dx);
+    appearBuf->append(fill ? "b\n" : "s\n");
+    break;
+  case annotLineEndOpenArrow:
+    w *= lineEndSize2;
+    appearBuf->appendf("{0:.4f} {1:.4f} m\n",
+		       x + w*cos(lineArrowAngle)*dx + w*sin(lineArrowAngle)*dy,
+		       y + w*cos(lineArrowAngle)*dy - w*sin(lineArrowAngle)*dx);
+    appearBuf->appendf("{0:.4f} {1:.4f} l\n", x, y);
+    appearBuf->appendf("{0:.4f} {1:.4f} l\n",
+		       x + w*cos(lineArrowAngle)*dx - w*sin(lineArrowAngle)*dy,
+		       y + w*cos(lineArrowAngle)*dy + w*sin(lineArrowAngle)*dx);
+    appearBuf->append("S\n");
+    break;
+  case annotLineEndClosedArrow:
+    w *= lineEndSize2;
+    appearBuf->appendf("{0:.4f} {1:.4f} m\n",
+		       x + w*cos(lineArrowAngle)*dx + w*sin(lineArrowAngle)*dy,
+		       y + w*cos(lineArrowAngle)*dy - w*sin(lineArrowAngle)*dx);
+    appearBuf->appendf("{0:.4f} {1:.4f} l\n", x, y);
+    appearBuf->appendf("{0:.4f} {1:.4f} l\n",
+		       x + w*cos(lineArrowAngle)*dx - w*sin(lineArrowAngle)*dy,
+		       y + w*cos(lineArrowAngle)*dy + w*sin(lineArrowAngle)*dx);
+    appearBuf->append(fill ? "b\n" : "s\n");
+    break;
+  case annotLineEndButt:
+    w *= lineEndSize1;
+    appearBuf->appendf("{0:.4f} {1:.4f} m\n",
+		       x + 0.5*w*dy,
+		       y - 0.5*w*dx);
+    appearBuf->appendf("{0:.4f} {1:.4f} l\n",
+		       x - 0.5*w*dy,
+		       y + 0.5*w*dx);
+    appearBuf->append("S\n");
+    break;
+  case annotLineEndROpenArrow:
+    w *= lineEndSize2;
+    appearBuf->appendf("{0:.4f} {1:.4f} m\n",
+		       x + w*sin(lineArrowAngle)*dy,
+		       y - w*sin(lineArrowAngle)*dx);
+    appearBuf->appendf("{0:.4f} {1:.4f} l\n",
+		       x + w*cos(lineArrowAngle)*dx,
+		       y + w*cos(lineArrowAngle)*dy);
+    appearBuf->appendf("{0:.4f} {1:.4f} l\n",
+		       x - w*sin(lineArrowAngle)*dy,
+		       y + w*sin(lineArrowAngle)*dx);
+    appearBuf->append("S\n");
+    break;
+  case annotLineEndRClosedArrow:
+    w *= lineEndSize2;
+    appearBuf->appendf("{0:.4f} {1:.4f} m\n",
+		       x + w*sin(lineArrowAngle)*dy,
+		       y - w*sin(lineArrowAngle)*dx);
+    appearBuf->appendf("{0:.4f} {1:.4f} l\n",
+		       x + w*cos(lineArrowAngle)*dx,
+		       y + w*cos(lineArrowAngle)*dy);
+    appearBuf->appendf("{0:.4f} {1:.4f} l\n",
+		       x - w*sin(lineArrowAngle)*dy,
+		       y + w*sin(lineArrowAngle)*dx);
+    appearBuf->append(fill ? "b\n" : "s\n");
+    break;
+  case annotLineEndSlash:
+    w *= lineEndSize1;
+    appearBuf->appendf("{0:.4f} {1:.4f} m\n",
+		       x + 0.5*w*cos(lineArrowAngle)*dy
+		         - 0.5*w*sin(lineArrowAngle)*dx,
+		       y - 0.5*w*cos(lineArrowAngle)*dx
+		         - 0.5*w*sin(lineArrowAngle)*dy);
+    appearBuf->appendf("{0:.4f} {1:.4f} l\n",
+		       x - 0.5*w*cos(lineArrowAngle)*dy
+		         + 0.5*w*sin(lineArrowAngle)*dx,
+		       y + 0.5*w*cos(lineArrowAngle)*dx
+		         + 0.5*w*sin(lineArrowAngle)*dy);
+    appearBuf->append("S\n");
+    break;
   }
-
-  // get the font and font size
-  font = NULL;
-  fontSize = 0;
-  if (tfPos >= 0) {
-    tok = (GString *)daToks->get(tfPos);
-    if (tok->getLength() >= 1 && tok->getChar(0) == '/') {
-      if (!fontDict || !(font = fontDict->lookup(tok->getCString() + 1))) {
-	error(errSyntaxError, -1, "Unknown font in field's DA string");
-      }
-    } else {
-      error(errSyntaxError, -1,
-	    "Invalid font name in 'Tf' operator in field's DA string");
-    }
-    tok = (GString *)daToks->get(tfPos + 1);
-    fontSize = atof(tok->getCString());
-  } else {
-    error(errSyntaxError, -1, "Missing 'Tf' operator in field's DA string");
-  }
-
-  // get the border width
-  border = borderStyle->getWidth();
-
-  // compute font autosize
-  if (fontSize == 0) {
-    wMax = 0;
-    for (i = 0; i < nOptions; ++i) {
-      if (font && !font->isCIDFont()) {
-	w = 0;
-	for (j = 0; j < text[i]->getLength(); ++j) {
-	  w += ((Gfx8BitFont *)font)->getWidth(text[i]->getChar(j));
-	}
-      } else {
-	// otherwise, make a crude estimate
-	w = text[i]->getLength() * 0.5;
-      }
-      if (w > wMax) {
-	wMax = w;
-      }
-    }
-    fontSize = yMax - yMin - 2 * border;
-    fontSize2 = (xMax - xMin - 4 - 2 * border) / wMax;
-    if (fontSize2 < fontSize) {
-      fontSize = fontSize2;
-    }
-    fontSize = floor(fontSize);
-    if (tfPos >= 0) {
-      tok = (GString *)daToks->get(tfPos + 1);
-      tok->clear();
-      tok->appendf("{0:.2f}", fontSize);
-    }
-  }
-
-  // draw the text
-  y = yMax - yMin - 1.1 * fontSize;
-  for (i = topIdx; i < nOptions; ++i) {
-
-    // setup
-    appearBuf->append("q\n");
-
-    // draw the background if selected
-    if (selection[i]) {
-      appearBuf->append("0 g f\n");
-      appearBuf->appendf("{0:.2f} {1:.2f} {2:.2f} {3:.2f} re f\n",
-	      border,
-	      y - 0.2 * fontSize,
-	      xMax - xMin - 2 * border,
-	      1.1 * fontSize);
-    }
-
-    // setup
-    appearBuf->append("BT\n");
-
-    // compute string width
-    if (font && !font->isCIDFont()) {
-      w = 0;
-      for (j = 0; j < text[i]->getLength(); ++j) {
-	w += ((Gfx8BitFont *)font)->getWidth(text[i]->getChar(j));
-      }
-    } else {
-      // otherwise, make a crude estimate
-      w = text[i]->getLength() * 0.5;
-    }
-
-    // compute text start position
-    w *= fontSize;
-    switch (quadding) {
-    case fieldQuadLeft:
-    default:
-      x = border + 2;
-      break;
-    case fieldQuadCenter:
-      x = (xMax - xMin - w) / 2;
-      break;
-    case fieldQuadRight:
-      x = xMax - xMin - border - 2 - w;
-      break;
-    }
-
-    // set the font matrix
-    if (tmPos >= 0) {
-      tok = (GString *)daToks->get(tmPos + 4);
-      tok->clear();
-      tok->appendf("{0:.2f}", x);
-      tok = (GString *)daToks->get(tmPos + 5);
-      tok->clear();
-      tok->appendf("{0:.2f}", y);
-    }
-
-    // write the DA string
-    if (daToks) {
-      for (j = 0; j < daToks->getLength(); ++j) {
-	appearBuf->append((GString *)daToks->get(j))->append(' ');
-      }
-    }
-
-    // write the font matrix (if not part of the DA string)
-    if (tmPos < 0) {
-      appearBuf->appendf("1 0 0 1 {0:.2f} {1:.2f} Tm\n", x, y);
-    }
-
-    // change the text color if selected
-    if (selection[i]) {
-      appearBuf->append("1 g\n");
-    }
-
-    // write the text string
-    appearBuf->append('(');
-    for (j = 0; j < text[i]->getLength(); ++j) {
-      c = text[i]->getChar(j) & 0xff;
-      if (c == '(' || c == ')' || c == '\\') {
-	appearBuf->append('\\');
-	appearBuf->append(c);
-      } else if (c < 0x20 || c >= 0x80) {
-	appearBuf->appendf("\\{0:03o}", c);
-      } else {
-	appearBuf->append(c);
-      }
-    }
-    appearBuf->append(") Tj\n");
-
-    // cleanup
-    appearBuf->append("ET\n");
-    appearBuf->append("Q\n");
-
-    // next line
-    y -= 1.1 * fontSize;
-  }
-
-  if (daToks) {
-    deleteGList(daToks, GString);
-  }
-}
-
-// Figure out how much text will fit on the next line.  Returns:
-// *end = one past the last character to be included
-// *width = width of the characters start .. end-1
-// *next = index of first character on the following line
-void Annot::getNextLine(GString *text, int start,
-			GfxFont *font, double fontSize, double wMax,
-			int *end, double *width, int *next) {
-  double w, dw;
-  int j, k, c;
-
-  // figure out how much text will fit on the line
-  //~ what does Adobe do with tabs?
-  w = 0;
-  for (j = start; j < text->getLength() && w <= wMax; ++j) {
-    c = text->getChar(j) & 0xff;
-    if (c == 0x0a || c == 0x0d) {
-      break;
-    }
-    if (font && !font->isCIDFont()) {
-      dw = ((Gfx8BitFont *)font)->getWidth(c) * fontSize;
-    } else {
-      // otherwise, make a crude estimate
-      dw = 0.5 * fontSize;
-    }
-    w += dw;
-  }
-  if (w > wMax) {
-    for (k = j; k > start && text->getChar(k-1) != ' '; --k) ;
-    for (; k > start && text->getChar(k-1) == ' '; --k) ;
-    if (k > start) {
-      j = k;
-    }
-    if (j == start) {
-      // handle the pathological case where the first character is
-      // too wide to fit on the line all by itself
-      j = start + 1;
-    }
-  }
-  *end = j;
-
-  // compute the width
-  w = 0;
-  for (k = start; k < j; ++k) {
-    if (font && !font->isCIDFont()) {
-      dw = ((Gfx8BitFont *)font)->getWidth(text->getChar(k)) * fontSize;
-    } else {
-      // otherwise, make a crude estimate
-      dw = 0.5 * fontSize;
-    }
-    w += dw;
-  }
-  *width = w;
-
-  // next line
-  while (j < text->getLength() && text->getChar(j) == ' ') {
-    ++j;
-  }
-  if (j < text->getLength() && text->getChar(j) == 0x0d) {
-    ++j;
-  }
-  if (j < text->getLength() && text->getChar(j) == 0x0a) {
-    ++j;
-  }
-  *next = j;
 }
 
 // Draw an (approximate) circle of radius <r> centered at (<cx>, <cy>).
-// If <fill> is true, the circle is filled; otherwise it is stroked.
-void Annot::drawCircle(double cx, double cy, double r, GBool fill) {
-  appearBuf->appendf("{0:.2f} {1:.2f} m\n",
+// <cmd> is used to draw the circle ("f", "s", or "b").
+void Annot::drawCircle(double cx, double cy, double r, const char *cmd) {
+  appearBuf->appendf("{0:.4f} {1:.4f} m\n",
 		     cx + r, cy);
-  appearBuf->appendf("{0:.2f} {1:.2f} {2:.2f} {3:.2f} {4:.2f} {5:.2f} c\n",
+  appearBuf->appendf("{0:.4f} {1:.4f} {2:.4f} {3:.4f} {4:.4f} {5:.4f} c\n",
 		     cx + r, cy + bezierCircle * r,
 		     cx + bezierCircle * r, cy + r,
 		     cx, cy + r);
-  appearBuf->appendf("{0:.2f} {1:.2f} {2:.2f} {3:.2f} {4:.2f} {5:.2f} c\n",
+  appearBuf->appendf("{0:.4f} {1:.4f} {2:.4f} {3:.4f} {4:.4f} {5:.4f} c\n",
 		     cx - bezierCircle * r, cy + r,
 		     cx - r, cy + bezierCircle * r,
 		     cx - r, cy);
-  appearBuf->appendf("{0:.2f} {1:.2f} {2:.2f} {3:.2f} {4:.2f} {5:.2f} c\n",
+  appearBuf->appendf("{0:.4f} {1:.4f} {2:.4f} {3:.4f} {4:.4f} {5:.4f} c\n",
 		     cx - r, cy - bezierCircle * r,
 		     cx - bezierCircle * r, cy - r,
 		     cx, cy - r);
-  appearBuf->appendf("{0:.2f} {1:.2f} {2:.2f} {3:.2f} {4:.2f} {5:.2f} c\n",
+  appearBuf->appendf("{0:.4f} {1:.4f} {2:.4f} {3:.4f} {4:.4f} {5:.4f} c\n",
 		     cx + bezierCircle * r, cy - r,
 		     cx + r, cy - bezierCircle * r,
 		     cx + r, cy);
-  appearBuf->append(fill ? "f\n" : "s\n");
+  appearBuf->appendf("{0:s}\n", cmd);
 }
 
 // Draw the top-left half of an (approximate) circle of radius <r>
@@ -1417,16 +974,16 @@ void Annot::drawCircleTopLeft(double cx, double cy, double r) {
   double r2;
 
   r2 = r / sqrt(2.0);
-  appearBuf->appendf("{0:.2f} {1:.2f} m\n",
+  appearBuf->appendf("{0:.4f} {1:.4f} m\n",
 		     cx + r2, cy + r2);
-  appearBuf->appendf("{0:.2f} {1:.2f} {2:.2f} {3:.2f} {4:.2f} {5:.2f} c\n",
+  appearBuf->appendf("{0:.4f} {1:.4f} {2:.4f} {3:.4f} {4:.4f} {5:.4f} c\n",
 		     cx + (1 - bezierCircle) * r2,
 		     cy + (1 + bezierCircle) * r2,
 		     cx - (1 - bezierCircle) * r2,
 		     cy + (1 + bezierCircle) * r2,
 		     cx - r2,
 		     cy + r2);
-  appearBuf->appendf("{0:.2f} {1:.2f} {2:.2f} {3:.2f} {4:.2f} {5:.2f} c\n",
+  appearBuf->appendf("{0:.4f} {1:.4f} {2:.4f} {3:.4f} {4:.4f} {5:.4f} c\n",
 		     cx - (1 + bezierCircle) * r2,
 		     cy + (1 - bezierCircle) * r2,
 		     cx - (1 + bezierCircle) * r2,
@@ -1442,16 +999,16 @@ void Annot::drawCircleBottomRight(double cx, double cy, double r) {
   double r2;
 
   r2 = r / sqrt(2.0);
-  appearBuf->appendf("{0:.2f} {1:.2f} m\n",
+  appearBuf->appendf("{0:.4f} {1:.4f} m\n",
 		     cx - r2, cy - r2);
-  appearBuf->appendf("{0:.2f} {1:.2f} {2:.2f} {3:.2f} {4:.2f} {5:.2f} c\n",
+  appearBuf->appendf("{0:.4f} {1:.4f} {2:.4f} {3:.4f} {4:.4f} {5:.4f} c\n",
 		     cx - (1 - bezierCircle) * r2,
 		     cy - (1 + bezierCircle) * r2,
 		     cx + (1 - bezierCircle) * r2,
 		     cy - (1 + bezierCircle) * r2,
 		     cx + r2,
 		     cy - r2);
-  appearBuf->appendf("{0:.2f} {1:.2f} {2:.2f} {3:.2f} {4:.2f} {5:.2f} c\n",
+  appearBuf->appendf("{0:.4f} {1:.4f} {2:.4f} {3:.4f} {4:.4f} {5:.4f} c\n",
 		     cx + (1 + bezierCircle) * r2,
 		     cy - (1 - bezierCircle) * r2,
 		     cx + (1 + bezierCircle) * r2,
@@ -1461,32 +1018,7 @@ void Annot::drawCircleBottomRight(double cx, double cy, double r) {
   appearBuf->append("S\n");
 }
 
-// Look up an inheritable field dictionary entry.
-Object *Annot::fieldLookup(Dict *field, Dict *acroForm,
-			   const char *key, Object *obj) {
-  Dict *dict;
-  Object parent;
-
-  dict = field;
-  if (!dict->lookup(key, obj)->isNull()) {
-    return obj;
-  }
-  obj->free();
-  if (dict->lookup("Parent", &parent)->isDict()) {
-    fieldLookup(parent.getDict(), acroForm, key, obj);
-  } else if (acroForm) {
-    // some fields don't specify a parent, so we check the AcroForm
-    // dictionary just in case
-    fieldLookup(acroForm, NULL, key, obj);
-  } else {
-    obj->initNull();
-  }
-  parent.free();
-  return obj;
-}
-
 void Annot::draw(Gfx *gfx, GBool printing) {
-  Object obj;
   GBool oc, isLink;
 
   // check the flags
@@ -1503,10 +1035,8 @@ void Annot::draw(Gfx *gfx, GBool printing) {
 
   // draw the appearance stream
   isLink = type && !type->cmp("Link");
-  appearance.fetch(doc->getXRef(), &obj);
-  gfx->drawAnnot(&obj, isLink ? borderStyle : (AnnotBorderStyle *)NULL,
+  gfx->drawAnnot(&appearance, isLink ? borderStyle : (AnnotBorderStyle *)NULL,
 		 xMin, yMin, xMax, yMax);
-  obj.free();
 }
 
 Object *Annot::getObject(Object *obj) {
@@ -1524,8 +1054,9 @@ Object *Annot::getObject(Object *obj) {
 
 Annots::Annots(PDFDoc *docA, Object *annotsObj) {
   Annot *annot;
-  Object obj1;
+  Object obj1, obj2;
   Ref ref;
+  GBool drawWidgetAnnots;
   int size;
   int i;
 
@@ -1535,6 +1066,13 @@ Annots::Annots(PDFDoc *docA, Object *annotsObj) {
   nAnnots = 0;
 
   if (annotsObj->isArray()) {
+    // Kludge: some PDF files define an empty AcroForm, but still
+    // include Widget-type annotations -- in that case, we want to
+    // draw the widgets (since the form code won't).  This really
+    // ought to look for Widget-type annotations that are not included
+    // in any form field.
+    drawWidgetAnnots = !doc->getCatalog()->getForm() ||
+                       doc->getCatalog()->getForm()->getNumFields() == 0;
     for (i = 0; i < annotsObj->arrayGetLength(); ++i) {
       if (annotsObj->arrayGetNF(i, &obj1)->isRef()) {
 	ref = obj1.getRef();
@@ -1544,16 +1082,20 @@ Annots::Annots(PDFDoc *docA, Object *annotsObj) {
 	ref.num = ref.gen = -1;
       }
       if (obj1.isDict()) {
-	annot = new Annot(doc, obj1.getDict(), &ref);
-	if (annot->isOk()) {
-	  if (nAnnots >= size) {
-	    size += 16;
-	    annots = (Annot **)greallocn(annots, size, sizeof(Annot *));
+	if (drawWidgetAnnots ||
+	    !obj1.dictLookup("Subtype", &obj2)->isName("Widget")) {
+	  annot = new Annot(doc, obj1.getDict(), &ref);
+	  if (annot->isOk()) {
+	    if (nAnnots >= size) {
+	      size += 16;
+	      annots = (Annot **)greallocn(annots, size, sizeof(Annot *));
+	    }
+	    annots[nAnnots++] = annot;
+	  } else {
+	    delete annot;
 	  }
-	  annots[nAnnots++] = annot;
-	} else {
-	  delete annot;
 	}
+	obj2.free();
       }
       obj1.free();
     }
@@ -1569,69 +1111,11 @@ Annots::~Annots() {
   gfree(annots);
 }
 
-void Annots::generateAppearances() {
-  Dict *acroForm;
-  Object obj1, obj2;
-  Ref ref;
+void Annots::generateAnnotAppearances() {
   int i;
 
-  acroForm = doc->getCatalog()->getAcroForm()->isDict() ?
-               doc->getCatalog()->getAcroForm()->getDict() : NULL;
-  if (acroForm->lookup("Fields", &obj1)->isArray()) {
-    for (i = 0; i < obj1.arrayGetLength(); ++i) {
-      if (obj1.arrayGetNF(i, &obj2)->isRef()) {
-	ref = obj2.getRef();
-	obj2.free();
-	obj1.arrayGet(i, &obj2);
-      } else {
-	ref.num = ref.gen = -1;
-      }
-      if (obj2.isDict()) {
-	scanFieldAppearances(obj2.getDict(), &ref, NULL, acroForm);
-      }
-      obj2.free();
-    }
-  }
-  obj1.free();
-}
-
-void Annots::scanFieldAppearances(Dict *node, Ref *ref, Dict *parent,
-				  Dict *acroForm) {
-  Annot *annot;
-  Object obj1, obj2;
-  Ref ref2;
-  int i;
-
-  // non-terminal node: scan the children
-  if (node->lookup("Kids", &obj1)->isArray()) {
-    for (i = 0; i < obj1.arrayGetLength(); ++i) {
-      if (obj1.arrayGetNF(i, &obj2)->isRef()) {
-	ref2 = obj2.getRef();
-	obj2.free();
-	obj1.arrayGet(i, &obj2);
-      } else {
-	ref2.num = ref2.gen = -1;
-      }
-      if (obj2.isDict()) {
-	scanFieldAppearances(obj2.getDict(), &ref2, node, acroForm);
-      }
-      obj2.free();
-    }
-    obj1.free();
-    return;
-  }
-  obj1.free();
-
-  // terminal node: this is either a combined annot/field dict, or an
-  // annot dict whose parent is a field
-  if ((annot = findAnnot(ref))) {
-    node->lookupNF("Parent", &obj1);
-    if (!parent || !obj1.isNull()) {
-      annot->generateFieldAppearance(node, node, acroForm);
-    } else {
-      annot->generateFieldAppearance(parent, node, acroForm);
-    }
-    obj1.free();
+  for (i = 0; i < nAnnots; ++i) {
+    annots[i]->generateAnnotAppearance();
   }
 }
 

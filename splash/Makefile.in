@@ -16,7 +16,7 @@ GOOLIBDIR = ../goo
 FOFISRCDIR = $(srcdir)/../fofi
 FOFILIBDIR = ../fofi
 
-CXXFLAGS = @CXXFLAGS@ @DEFS@ -I.. -I$(GOOSRCDIR) -I$(FOFISRCDIR) -I$(srcdir) @t1_CFLAGS@ @freetype2_CFLAGS@
+CXXFLAGS = @CXXFLAGS@ @DEFS@ -I.. -I$(srcdir)/.. -I$(GOOSRCDIR) -I$(FOFISRCDIR) -I$(srcdir) @freetype2_CFLAGS@
 
 CXX = @CXX@
 AR = @AR@
@@ -48,9 +48,6 @@ CXX_SRC = \
 	$(srcdir)/SplashPattern.cc \
 	$(srcdir)/SplashScreen.cc \
 	$(srcdir)/SplashState.cc \
-	$(srcdir)/SplashT1Font.cc \
-	$(srcdir)/SplashT1FontEngine.cc \
-	$(srcdir)/SplashT1FontFile.cc \
 	$(srcdir)/SplashXPath.cc \
 	$(srcdir)/SplashXPathScanner.cc
 
@@ -75,9 +72,6 @@ SPLASH_OBJS = \
 	SplashPattern.o \
 	SplashScreen.o \
 	SplashState.o \
-	SplashT1Font.o \
-	SplashT1FontEngine.o \
-	SplashT1FontFile.o \
 	SplashXPath.o \
 	SplashXPathScanner.o
 
@@ -96,4 +90,4 @@ clean:
 depend:
 	$(CXX) $(CXXFLAGS) -MM $(CXX_SRC) >Makefile.dep
 
-include Makefile.dep
+-include Makefile.dep

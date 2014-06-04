@@ -147,7 +147,7 @@ int main(int argc, char *argv[]) {
   } else if (saveAll) {
     for (i = 0; i < nFiles; ++i) {
       if (savePath[0]) {
-	n = strlen(savePath);
+	n = (int)strlen(savePath);
 	if (n > (int)sizeof(path) - 2) {
 	  n = sizeof(path) - 2;
 	}

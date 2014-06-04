@@ -110,7 +110,7 @@ public:
   virtual void stroke(GfxState *state);
   virtual void fill(GfxState *state);
   virtual void eoFill(GfxState *state);
-  virtual void tilingPatternFill(GfxState *state, Gfx *gfx, Object *str,
+  virtual void tilingPatternFill(GfxState *state, Gfx *gfx, Object *strRef,
 				 int paintType, Dict *resDict,
 				 double *mat, double *bbox,
 				 int x0, int y0, int x1, int y1,
@@ -135,25 +135,26 @@ public:
   //----- image drawing
   virtual void drawImageMask(GfxState *state, Object *ref, Stream *str,
 			     int width, int height, GBool invert,
-			     GBool inlineImg);
+			     GBool inlineImg, GBool interpolate);
   virtual void setSoftMaskFromImageMask(GfxState *state,
 					Object *ref, Stream *str,
 					int width, int height, GBool invert,
-					GBool inlineImg);
+					GBool inlineImg, GBool interpolate);
   virtual void drawImage(GfxState *state, Object *ref, Stream *str,
 			 int width, int height, GfxImageColorMap *colorMap,
-			 int *maskColors, GBool inlineImg);
+			 int *maskColors, GBool inlineImg, GBool interpolate);
   virtual void drawMaskedImage(GfxState *state, Object *ref, Stream *str,
 			       int width, int height,
 			       GfxImageColorMap *colorMap,
 			       Stream *maskStr, int maskWidth, int maskHeight,
-			       GBool maskInvert);
+			       GBool maskInvert, GBool interpolate);
   virtual void drawSoftMaskedImage(GfxState *state, Object *ref, Stream *str,
 				   int width, int height,
 				   GfxImageColorMap *colorMap,
 				   Stream *maskStr,
 				   int maskWidth, int maskHeight,
-				   GfxImageColorMap *maskColorMap);
+				   GfxImageColorMap *maskColorMap,
+				   GBool interpolate);
 
   //----- Type 3 font operators
   virtual void type3D0(GfxState *state, double wx, double wy);
@@ -193,6 +194,10 @@ public:
   // Set this flag to true to generate an upside-down bitmap (useful
   // for Windows BMP files).
   void setBitmapUpsideDown(GBool f) { bitmapUpsideDown = f; }
+
+  // Setting this to true disables the final composite (with the
+  // opaque paper color), resulting in transparent output.
+  void setNoComposite(GBool f) { noComposite = f; }
 
   // Get the Splash object.
   Splash *getSplash() { return splash; }
@@ -245,11 +250,18 @@ private:
 			     Guchar *alphaLine);
   static GBool maskedImageSrc(void *data, SplashColorPtr line,
 			      Guchar *alphaLine);
+  void reduceImageResolution(Stream *str, double *mat,
+			     int *width, int *height);
+  void clearMaskRegion(GfxState *state,
+		       Splash *maskSplash,
+		       double xMin, double yMin,
+		       double xMax, double yMax);
 
   SplashColorMode colorMode;
   int bitmapRowPad;
   GBool bitmapTopDown;
   GBool bitmapUpsideDown;
+  GBool noComposite;
   GBool allowAntialias;
   GBool vectorAntialias;
   GBool reverseVideo;		// reverse video mode
@@ -268,7 +280,6 @@ private:
     t3FontCache[splashOutT3FontCacheSize];
   int nT3Fonts;			// number of valid entries in t3FontCache
   T3GlyphStack *t3GlyphStack;	// Type 3 glyph context stack
-  GBool haveT3Dx;		// set after seeing a d0/d1 operator
 
   SplashFont *font;		// current font
   GBool needFontUpdate;		// set when the font needs to be updated

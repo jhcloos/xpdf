@@ -1,8 +1,8 @@
-.\" Copyright 1999-2011 Glyph & Cog, LLC
-.TH pdffonts 1 "15 August 2011"
+.\" Copyright 1999-2014 Glyph & Cog, LLC
+.TH pdffonts 1 "28 May 2014"
 .SH NAME
 pdffonts \- Portable Document Format (PDF) font analyzer (version
-3.03)
+3.04)
 .SH SYNOPSIS
 .B pdffonts
 [options]
@@ -34,6 +34,13 @@ can't be converted to Unicode)
 .TP
 .B object ID
 the font dictionary object ID (number and generation)
+.TP
+.B location
+the font location (see the
+.B \-loc
+and
+.B \-locPS
+options).
 .PP
 PDF files can contain the following types of fonts:
 .PP
@@ -86,6 +93,14 @@ the corresponding command line option.
 .BI \-f " number"
 Specifies the first page to analyze.
 .TP
+.B \-loc
+Shows additional information on the location of the font that will be
+used when the PDF file is rasterized (with xpdf, pdftoppm, etc.).
+.TP
+.B \-locPS
+Shows additional information on the location of the font that will be
+used when the PDF file is converted to PostScript (with pdftops).
+.TP
 .BI \-l " number"
 Specifies the last page to analyze.
 .TP
@@ -128,15 +143,17 @@ Error related to PDF permissions.
 99
 Other error.
 .SH AUTHOR
-The pdffonts software and documentation are copyright 1996-2011 Glyph
+The pdffonts software and documentation are copyright 1996-2014 Glyph
 & Cog, LLC.
 .SH "SEE ALSO"
 .BR xpdf (1),
 .BR pdftops (1),
 .BR pdftotext (1),
+.BR pdftohtml (1),
 .BR pdfinfo (1),
 .BR pdfdetach (1),
 .BR pdftoppm (1),
+.BR pdftopng (1),
 .BR pdfimages (1),
 .BR xpdfrc (5)
 .br

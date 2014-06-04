@@ -30,11 +30,9 @@ class GfxFont;
 class GfxColorSpace;
 class GfxSeparationColorSpace;
 class PDFRectangle;
-struct PST1FontName;
-struct PSFont8Info;
-struct PSFont16Enc;
 class PSOutCustomColor;
 class PSOutputDev;
+class PSFontFileInfo;
 
 //------------------------------------------------------------------------
 // PSOutputDev
@@ -91,6 +89,9 @@ public:
 
   // Check if file was successfully created.
   virtual GBool isOk() { return ok; }
+
+  // Returns false if there have been any errors on the output stream.
+  GBool checkIO();
 
   //---- get info about output device
 
@@ -196,7 +197,7 @@ public:
   virtual void stroke(GfxState *state);
   virtual void fill(GfxState *state);
   virtual void eoFill(GfxState *state);
-  virtual void tilingPatternFill(GfxState *state, Gfx *gfx, Object *str,
+  virtual void tilingPatternFill(GfxState *state, Gfx *gfx, Object *strRef,
 				 int paintType, Dict *resDict,
 				 double *mat, double *bbox,
 				 int x0, int y0, int x1, int y1,
@@ -218,15 +219,15 @@ public:
   //----- image drawing
   virtual void drawImageMask(GfxState *state, Object *ref, Stream *str,
 			     int width, int height, GBool invert,
-			     GBool inlineImg);
+			     GBool inlineImg, GBool interpolate);
   virtual void drawImage(GfxState *state, Object *ref, Stream *str,
 			 int width, int height, GfxImageColorMap *colorMap,
-			 int *maskColors, GBool inlineImg);
+			 int *maskColors, GBool inlineImg, GBool interpolate);
   virtual void drawMaskedImage(GfxState *state, Object *ref, Stream *str,
 			       int width, int height,
 			       GfxImageColorMap *colorMap,
 			       Stream *maskStr, int maskWidth, int maskHeight,
-			       GBool maskInvert);
+			       GBool maskInvert, GBool interpolate);
 
 #if OPI_SUPPORT
   //----- OPI functions
@@ -262,6 +263,7 @@ public:
     { overlayCbk = cbk; overlayCbkData = data; }
 
   void writePSChar(char c);
+  void writePSBlock(char *s, int len);
   void writePS(const char *s);
   void writePSFmt(const char *fmt, ...);
   void writePSString(GString *s);
@@ -277,27 +279,27 @@ private:
   void setupResources(Dict *resDict);
   void setupFonts(Dict *resDict);
   void setupFont(GfxFont *font, Dict *parentResDict);
-  void setupEmbeddedType1Font(Ref *id, GString *psName);
-  void setupExternalType1Font(GString *fileName, GString *psName);
-  void setupEmbeddedType1CFont(GfxFont *font, Ref *id, GString *psName);
-  void setupEmbeddedOpenTypeT1CFont(GfxFont *font, Ref *id, GString *psName);
-  void setupEmbeddedTrueTypeFont(GfxFont *font, Ref *id, GString *psName);
-  void setupExternalTrueTypeFont(GfxFont *font, GString *fileName,
-				 GString *psName);
-  void setupEmbeddedCIDType0Font(GfxFont *font, Ref *id, GString *psName);
-  void setupEmbeddedCIDTrueTypeFont(GfxFont *font, Ref *id, GString *psName,
-				    GBool needVerticalMetrics);
-  void setupExternalCIDTrueTypeFont(GfxFont *font,
-				    GString *fileName,
-				    GString *psName,
-				    GBool needVerticalMetrics);
-  void setupEmbeddedOpenTypeCFFFont(GfxFont *font, Ref *id, GString *psName);
-  void setupType3Font(GfxFont *font, GString *psName, Dict *parentResDict);
+  PSFontFileInfo *setupEmbeddedType1Font(GfxFont *font, Ref *id);
+  PSFontFileInfo *setupExternalType1Font(GfxFont *font, GString *fileName);
+  PSFontFileInfo *setupEmbeddedType1CFont(GfxFont *font, Ref *id);
+  PSFontFileInfo *setupEmbeddedOpenTypeT1CFont(GfxFont *font, Ref *id);
+  PSFontFileInfo *setupEmbeddedTrueTypeFont(GfxFont *font, Ref *id);
+  PSFontFileInfo *setupExternalTrueTypeFont(GfxFont *font, GString *fileName,
+					    int fontNum);
+  PSFontFileInfo *setupEmbeddedCIDType0Font(GfxFont *font, Ref *id);
+  PSFontFileInfo *setupEmbeddedCIDTrueTypeFont(GfxFont *font, Ref *id,
+					       GBool needVerticalMetrics);
+  PSFontFileInfo *setupExternalCIDTrueTypeFont(GfxFont *font,
+					       GString *fileName,
+					       int fontNum,
+					       GBool needVerticalMetrics);
+  PSFontFileInfo *setupEmbeddedOpenTypeCFFFont(GfxFont *font, Ref *id);
+  PSFontFileInfo *setupType3Font(GfxFont *font, Dict *parentResDict);
   GString *makePSFontName(GfxFont *font, Ref *id);
   void setupImages(Dict *resDict);
   void setupImage(Ref id, Stream *str, GBool mask);
   void setupForms(Dict *resDict);
-  void setupForm(Ref id, Object *strObj);
+  void setupForm(Object *strRef, Object *strObj);
   void addProcessColor(double c, double m, double y, double k);
   void addCustomColor(GfxSeparationColorSpace *sepCS);
   void doPath(GfxPath *path);
@@ -358,19 +360,8 @@ private:
   PDFDoc *doc;
   XRef *xref;			// the xref table for this PDF file
 
-  Ref *fontIDs;			// list of object IDs of all used fonts
-  int fontIDLen;		// number of entries in fontIDs array
-  int fontIDSize;		// size of fontIDs array
-  GHash *fontNames;		// all used font names
-  PST1FontName *t1FontNames;	// font names for Type 1/1C fonts
-  int t1FontNameLen;		// number of entries in t1FontNames array
-  int t1FontNameSize;		// size of t1FontNames array
-  PSFont8Info *font8Info;	// info for 8-bit fonts
-  int font8InfoLen;		// number of entries in font8Info array
-  int font8InfoSize;		// size of font8Info array
-  PSFont16Enc *font16Enc;	// encodings for substitute 16-bit fonts
-  int font16EncLen;		// number of entries in font16Enc array
-  int font16EncSize;		// size of font16Enc array
+  GList *fontInfo;		// info for each font [PSFontInfo]
+  GHash *fontFileInfo;		// info for each font file [PSFontFileInfo]
   Ref *imgIDs;			// list of image IDs for in-memory images
   int imgIDLen;			// number of entries in imgIDs array
   int imgIDSize;		// size of imgIDs array

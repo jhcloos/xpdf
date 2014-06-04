@@ -4,7 +4,7 @@ pdftoppm(1)                                                        pdftoppm(1)
 
 NAME
        pdftoppm - Portable Document Format (PDF) to Portable Pixmap (PPM) con-
-       verter (version 3.03)
+       verter (version 3.04)
 
 SYNOPSIS
        pdftoppm [options] PDF-file PPM-root
@@ -45,16 +45,12 @@ OPTIONS
 
        -gray  Generate a grayscale PGM file (instead of a color PPM file).
 
-       -t1lib yes | no
-              Enable or disable  t1lib  (a  Type  1  font  rasterizer).   This
-              defaults to "yes".  [config file: enableT1lib]
-
        -freetype yes | no
-              Enable  or  disable  FreeType  (a TrueType / Type 1 font raster-
+              Enable or disable FreeType (a TrueType /  Type  1  font  raster-
               izer).  This defaults to "yes".  [config file: enableFreeType]
 
        -aa yes | no
-              Enable or disable font anti-aliasing.  This defaults  to  "yes".
+              Enable  or  disable font anti-aliasing.  This defaults to "yes".
               [config file: antialias]
 
        -aaVector yes | no
@@ -62,7 +58,7 @@ OPTIONS
               [config file: vectorAntialias]
 
        -opw password
-              Specify the owner password for the  PDF  file.   Providing  this
+              Specify  the  owner  password  for the PDF file.  Providing this
               will bypass all security restrictions.
 
        -upw password
@@ -88,14 +84,14 @@ EXIT CODES
        99     Other error.
 
 AUTHOR
-       The pdftoppm software and documentation are copyright 1996-2011 Glyph &
+       The pdftoppm software and documentation are copyright 1996-2014 Glyph &
        Cog, LLC.
 
 SEE ALSO
-       xpdf(1),  pdftops(1),  pdftotext(1),  pdfinfo(1),  pdffonts(1),  pdfde-
-       tach(1), pdfimages(1), xpdfrc(5)
+       xpdf(1),   pdftops(1),  pdftotext(1),  pdftohtml(1),  pdfinfo(1),  pdf-
+       fonts(1), pdfdetach(1), pdftopng(1), pdfimages(1), xpdfrc(5)
        http://www.foolabs.com/xpdf/
 
 
 
-                                15 August 2011                     pdftoppm(1)
+                                  28 May 2014                      pdftoppm(1)

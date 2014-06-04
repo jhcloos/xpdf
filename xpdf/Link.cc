@@ -39,7 +39,7 @@ LinkAction *LinkAction::parseDest(Object *obj) {
 
 LinkAction *LinkAction::parseAction(Object *obj, GString *baseURI) {
   LinkAction *action;
-  Object obj2, obj3, obj4;
+  Object obj2, obj3, obj4, obj5;
 
   if (!obj->isDict()) {
     error(errSyntaxWarning, -1, "Bad annotation action");
@@ -86,6 +86,30 @@ LinkAction *LinkAction::parseAction(Object *obj, GString *baseURI) {
     obj3.free();
     obj4.free();
 
+  // JavaScript action
+  } else if (obj2.isName("JavaScript")) {
+    obj->dictLookup("JS", &obj3);
+    action = new LinkJavaScript(&obj3);
+    obj3.free();
+
+  // SubmitForm action
+  } else if (obj2.isName("SubmitForm")) {
+    obj->dictLookup("F", &obj3);
+    obj->dictLookup("Fields", &obj4);
+    obj->dictLookup("Flags", &obj5);
+    action = new LinkSubmitForm(&obj3, &obj4, &obj5);
+    obj3.free();
+    obj4.free();
+    obj5.free();
+
+  // Hide action
+  } else if (obj2.isName("Hide")) {
+    obj->dictLookupNF("T", &obj3);
+    obj->dictLookup("H", &obj4);
+    action = new LinkHide(&obj3, &obj4);
+    obj3.free();
+    obj4.free();
+
   // unknown action
   } else if (obj2.isName()) {
     action = new LinkUnknown(obj2.getName());
@@ -117,7 +141,7 @@ GString *LinkAction::getFileSpecName(Object *fileSpecObj) {
 
   // dictionary
   } else if (fileSpecObj->isDict()) {
-#ifdef WIN32
+#ifdef _WIN32
     if (!fileSpecObj->dictLookup("DOS", &obj1)->isString()) {
 #else
     if (!fileSpecObj->dictLookup("Unix", &obj1)->isString()) {
@@ -139,7 +163,7 @@ GString *LinkAction::getFileSpecName(Object *fileSpecObj) {
 
   // system-dependent path manipulation
   if (name) {
-#ifdef WIN32
+#ifdef _WIN32
     int i, j;
 
     // "//...."             --> "\...."
@@ -517,7 +541,7 @@ LinkLaunch::LinkLaunch(Object *actionObj) {
       fileName = getFileSpecName(&obj1);
     } else {
       obj1.free();
-#ifdef WIN32
+#ifdef _WIN32
       if (actionObj->dictLookup("Win", &obj1)->isDict()) {
 	obj1.dictLookup("F", &obj2);
 	fileName = getFileSpecName(&obj2);
@@ -644,6 +668,98 @@ LinkMovie::~LinkMovie() {
 }
 
 //------------------------------------------------------------------------
+// LinkJavaScript
+//------------------------------------------------------------------------
+
+LinkJavaScript::LinkJavaScript(Object *jsObj) {
+  char buf[4096];
+  int n;
+
+  if (jsObj->isString()) {
+    js = jsObj->getString()->copy();
+  } else if (jsObj->isStream()) {
+    js = new GString();
+    jsObj->streamReset();
+    while ((n = jsObj->getStream()->getBlock(buf, sizeof(buf))) > 0) {
+      js->append(buf, n);
+    }
+    jsObj->streamClose();
+  } else {
+    error(errSyntaxError, -1, "JavaScript action JS key is wrong type");
+    js = NULL;
+  }
+}
+
+LinkJavaScript::~LinkJavaScript() {
+  if (js) {
+    delete js;
+  }
+}
+
+//------------------------------------------------------------------------
+// LinkSubmitForm
+//------------------------------------------------------------------------
+
+LinkSubmitForm::LinkSubmitForm(Object *urlObj, Object *fieldsObj,
+			       Object *flagsObj) {
+  if (urlObj->isString()) {
+    url = urlObj->getString()->copy();
+  } else {
+    error(errSyntaxError, -1, "SubmitForm action URL is wrong type");
+    url = NULL;
+  }
+
+  if (fieldsObj->isArray()) {
+    fieldsObj->copy(&fields);
+  } else {
+    if (!fieldsObj->isNull()) {
+      error(errSyntaxError, -1, "SubmitForm action Fields value is wrong type");
+    }
+    fields.initNull();
+  }
+
+  if (flagsObj->isInt()) {
+    flags = flagsObj->getInt();
+  } else {
+    if (!flagsObj->isNull()) {
+      error(errSyntaxError, -1, "SubmitForm action Flags value is wrong type");
+    }
+    flags = 0;
+  }
+}
+
+LinkSubmitForm::~LinkSubmitForm() {
+  if (url) {
+    delete url;
+  }
+  fields.free();
+}
+
+//------------------------------------------------------------------------
+// LinkHide
+//------------------------------------------------------------------------
+
+LinkHide::LinkHide(Object *fieldsObj, Object *hideFlagObj) {
+  if (fieldsObj->isRef() || fieldsObj->isString() || fieldsObj->isArray()) {
+    fieldsObj->copy(&fields);
+  } else {
+    error(errSyntaxError, -1, "Hide action T value is wrong type");
+    fields.initNull();
+  }
+
+  if (hideFlagObj->isBool()) {
+    hideFlag = hideFlagObj->getBool();
+  } else {
+    error(errSyntaxError, -1, "Hide action H value is wrong type");
+    hideFlag = gFalse;
+  }
+}
+
+LinkHide::~LinkHide() {
+  fields.free();
+}
+
+//------------------------------------------------------------------------
 // LinkUnknown
 //------------------------------------------------------------------------
 
@@ -745,7 +861,7 @@ Link::~Link() {
 
 Links::Links(Object *annots, GString *baseURI) {
   Link *link;
-  Object obj1, obj2;
+  Object obj1, obj2, obj3;
   int size;
   int i;
 
@@ -756,7 +872,10 @@ Links::Links(Object *annots, GString *baseURI) {
   if (annots->isArray()) {
     for (i = 0; i < annots->arrayGetLength(); ++i) {
       if (annots->arrayGet(i, &obj1)->isDict()) {
-	if (obj1.dictLookup("Subtype", &obj2)->isName("Link")) {
+	obj1.dictLookup("Subtype", &obj2);
+	obj1.dictLookup("FT", &obj3);
+	if (obj2.isName("Link") ||
+	    (obj2.isName("Widget") && (obj3.isName("Btn") || obj3.isNull()))) {
 	  link = new Link(obj1.getDict(), baseURI);
 	  if (link->isOk()) {
 	    if (numLinks >= size) {
@@ -768,6 +887,7 @@ Links::Links(Object *annots, GString *baseURI) {
 	    delete link;
 	  }
 	}
+	obj3.free();
 	obj2.free();
       }
       obj1.free();

@@ -167,7 +167,7 @@ CharCodeToUnicode *CharCodeToUnicode::parseUnicodeToUnicode(
   while (getLine(buf, sizeof(buf), f)) {
     ++line;
     if (!(tok = strtok(buf, " \t\r\n")) ||
-	!parseHex(tok, strlen(tok), &u0)) {
+	!parseHex(tok, (int)strlen(tok), &u0)) {
       error(errSyntaxWarning, -1,
 	    "Bad line ({0:d}) in unicodeToUnicode file '{1:t}'",
 	    line, fileName);
@@ -178,7 +178,7 @@ CharCodeToUnicode *CharCodeToUnicode::parseUnicodeToUnicode(
       if (!(tok = strtok(NULL, " \t\r\n"))) {
 	break;
       }
-      if (!parseHex(tok, strlen(tok), &uBuf[n])) {
+      if (!parseHex(tok, (int)strlen(tok), &uBuf[n])) {
 	error(errSyntaxWarning, -1,
 	      "Bad line ({0:d}) in unicodeToUnicode file '{1:t}'",
 	      line, fileName);
@@ -336,23 +336,21 @@ void CharCodeToUnicode::parseCMap1(int (*getCharFunc)(void *), void *data,
 	if (code1 > maxCode || code2 > maxCode) {
 	  error(errSyntaxWarning, -1,
 		"Invalid entry in bfrange block in ToUnicode CMap");
-	  if (code1 > maxCode) {
-	    code1 = maxCode;
-	  }
 	  if (code2 > maxCode) {
 	    code2 = maxCode;
 	  }
 	}
 	if (!strcmp(tok3, "[")) {
 	  i = 0;
-	  while (pst->getToken(tok1, sizeof(tok1), &n1) &&
-		 code1 + i <= code2) {
+	  while (pst->getToken(tok1, sizeof(tok1), &n1)) {
 	    if (!strcmp(tok1, "]")) {
 	      break;
 	    }
 	    if (tok1[0] == '<' && tok1[n1 - 1] == '>') {
-	      tok1[n1 - 1] = '\0';
-	      addMapping(code1 + i, tok1 + 1, n1 - 2, 0);
+	      if (code1 + i <= code2) {
+		tok1[n1 - 1] = '\0';
+		addMapping(code1 + i, tok1 + 1, n1 - 2, 0);
+	      }
 	    } else {
 	      error(errSyntaxWarning, -1,
 		    "Illegal entry in bfrange block in ToUnicode CMap");

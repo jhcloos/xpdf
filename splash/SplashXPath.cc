@@ -2,6 +2,8 @@
 //
 // SplashXPath.cc
 //
+// Copyright 2003-2013 Glyph & Cog, LLC
+//
 //========================================================================
 
 #include <aconf.h>
@@ -54,12 +56,10 @@ inline void SplashXPath::transform(SplashCoord *matrix,
 
 SplashXPath::SplashXPath(SplashPath *path, SplashCoord *matrix,
 			 SplashCoord flatness, GBool closeSubpaths) {
-  SplashPathHint *hint;
   SplashXPathPoint *pts;
-  SplashXPathAdjust *adjusts, *adjust;
   SplashCoord x0, y0, x1, y1, x2, y2, x3, y3, xsp, ysp;
-  SplashCoord adj0, adj1;
-  int curSubpath, curSubpathX, i, j;
+  SplashCoord xMinFP, xMaxFP, yMinFP, yMaxFP;
+  int curSubpath, i;
 
   // transform the points
   pts = (SplashXPathPoint *)gmallocn(path->length, sizeof(SplashXPathPoint));
@@ -67,78 +67,16 @@ SplashXPath::SplashXPath(SplashPath *path, SplashCoord *matrix,
     transform(matrix, path->pts[i].x, path->pts[i].y, &pts[i].x, &pts[i].y);
   }
 
-  // set up the stroke adjustment hints
+  // do stroke adjustment
   if (path->hints) {
-    adjusts = (SplashXPathAdjust *)gmallocn(path->hintsLength,
-					    sizeof(SplashXPathAdjust));
-    for (i = 0; i < path->hintsLength; ++i) {
-      hint = &path->hints[i];
-      x0 = pts[hint->ctrl0    ].x;    y0 = pts[hint->ctrl0    ].y;
-      x1 = pts[hint->ctrl0 + 1].x;    y1 = pts[hint->ctrl0 + 1].y;
-      x2 = pts[hint->ctrl1    ].x;    y2 = pts[hint->ctrl1    ].y;
-      x3 = pts[hint->ctrl1 + 1].x;    y3 = pts[hint->ctrl1 + 1].y;
-      if (x0 == x1 && x2 == x3) {
-	adjusts[i].vert = gTrue;
-	adj0 = x0;
-	adj1 = x2;
-      } else if (y0 == y1 && y2 == y3) {
-	adjusts[i].vert = gFalse;
-	adj0 = y0;
-	adj1 = y2;
-      } else {
-	gfree(adjusts);
-	adjusts = NULL;
-	break;
-      }
-      if (adj0 > adj1) {
-	x0 = adj0;
-	adj0 = adj1;
-	adj1 = x0;
-      }
-      adjusts[i].x0a = adj0 - 0.01;
-      adjusts[i].x0b = adj0 + 0.01;
-      adjusts[i].xma = (SplashCoord)0.5 * (adj0 + adj1) - 0.01;
-      adjusts[i].xmb = (SplashCoord)0.5 * (adj0 + adj1) + 0.01;
-      adjusts[i].x1a = adj1 - 0.01;
-      adjusts[i].x1b = adj1 + 0.01;
-      // rounding both edge coordinates can result in lines of
-      // different widths (e.g., adj=10.1, adj1=11.3 --> x0=10, x1=11;
-      // adj0=10.4, adj1=11.6 --> x0=10, x1=12), but it has the
-      // benefit of making adjacent strokes/fills line up without any
-      // gaps between them
-      x0 = splashRound(adj0);
-      x1 = splashRound(adj1);
-      if (x1 == x0) {
-	x1 = x1 + 1;
-      }
-      adjusts[i].x0 = (SplashCoord)x0;
-      adjusts[i].x1 = (SplashCoord)x1 - 0.01;
-      adjusts[i].xm = (SplashCoord)0.5 * (adjusts[i].x0 + adjusts[i].x1);
-      adjusts[i].firstPt = hint->firstPt;
-      adjusts[i].lastPt = hint->lastPt;
-    }
-
-  } else {
-    adjusts = NULL;
-  }
-
-  // perform stroke adjustment
-  if (adjusts) {
-    for (i = 0, adjust = adjusts; i < path->hintsLength; ++i, ++adjust) {
-      for (j = adjust->firstPt; j <= adjust->lastPt; ++j) {
-	strokeAdjust(adjust, &pts[j].x, &pts[j].y);
-      }
-    }
-    gfree(adjusts);
+    strokeAdjust(pts, path->hints, path->hintsLength);
   }
 
   segs = NULL;
   length = size = 0;
 
   x0 = y0 = xsp = ysp = 0; // make gcc happy
-  adj0 = adj1 = 0; // make gcc happy
   curSubpath = 0;
-  curSubpathX = 0;
   i = 0;
   while (i < path->length) {
 
@@ -149,7 +87,6 @@ SplashXPath::SplashXPath(SplashPath *path, SplashCoord *matrix,
       xsp = x0;
       ysp = y0;
       curSubpath = i;
-      curSubpathX = length;
       ++i;
 
     } else {
@@ -197,32 +134,130 @@ SplashXPath::SplashXPath(SplashPath *path, SplashCoord *matrix,
   }
 
   gfree(pts);
+
+#if HAVE_STD_SORT
+  std::sort(segs, segs + length, SplashXPathSeg::cmpY);
+#else
+  qsort(segs, length, sizeof(SplashXPathSeg), &SplashXPathSeg::cmpY);
+#endif
+
+  if (length == 0) {
+    xMin = yMin = xMax = yMax = 0;
+  } else {
+    if (segs[0].x0 < segs[0].x1) {
+      xMinFP = segs[0].x0;
+      xMaxFP = segs[0].x1;
+    } else {
+      xMinFP = segs[0].x1;
+      xMaxFP = segs[0].x0;
+    }
+    yMinFP = segs[0].y0;
+    yMaxFP = segs[0].y1;
+    for (i = 1; i < length; ++i) {
+      if (segs[i].x0 < xMinFP) {
+	xMinFP = segs[i].x0;
+      } else if (segs[i].x0 > xMaxFP) {
+	xMaxFP = segs[i].x0;
+      }
+      if (segs[i].x1 < xMinFP) {
+	xMinFP = segs[i].x1;
+      } else if (segs[i].x1 > xMaxFP) {
+	xMaxFP = segs[i].x1;
+      }
+      if (segs[i].y1 > yMaxFP) {
+	yMaxFP = segs[i].y1;
+      }
+    }
+    xMin = splashFloor(xMinFP);
+    yMin = splashFloor(yMinFP);
+    xMax = splashFloor(xMaxFP);
+    yMax = splashFloor(yMaxFP);
+  }
 }
 
-// Apply the stroke adjust hints to point <pt>: (*<xp>, *<yp>).
-void SplashXPath::strokeAdjust(SplashXPathAdjust *adjust,
-			       SplashCoord *xp, SplashCoord *yp) {
-  SplashCoord x, y;
+void SplashXPath::strokeAdjust(SplashXPathPoint *pts,
+			       SplashPathHint *hints, int nHints) {
+  SplashXPathAdjust *adjusts, *adjust;
+  SplashPathHint *hint;
+  SplashCoord x0, y0, x1, y1, x2, y2, x3, y3;
+  SplashCoord adj0, adj1, d;
+  int xi0, xi1;
+  int i, j;
 
-  if (adjust->vert) {
-    x = *xp;
-    if (x > adjust->x0a && x < adjust->x0b) {
-      *xp = adjust->x0;
-    } else if (x > adjust->xma && x < adjust->xmb) {
-      *xp = adjust->xm;
-    } else if (x > adjust->x1a && x < adjust->x1b) {
-      *xp = adjust->x1;
+  // set up the stroke adjustment hints
+  adjusts = (SplashXPathAdjust *)gmallocn(nHints, sizeof(SplashXPathAdjust));
+  for (i = 0; i < nHints; ++i) {
+    hint = &hints[i];
+    x0 = pts[hint->ctrl0    ].x;    y0 = pts[hint->ctrl0    ].y;
+    x1 = pts[hint->ctrl0 + 1].x;    y1 = pts[hint->ctrl0 + 1].y;
+    x2 = pts[hint->ctrl1    ].x;    y2 = pts[hint->ctrl1    ].y;
+    x3 = pts[hint->ctrl1 + 1].x;    y3 = pts[hint->ctrl1 + 1].y;
+    if (x0 == x1 && x2 == x3) {
+      adjusts[i].vert = gTrue;
+      adj0 = x0;
+      adj1 = x2;
+    } else if (y0 == y1 && y2 == y3) {
+      adjusts[i].vert = gFalse;
+      adj0 = y0;
+      adj1 = y2;
+    } else {
+      goto done;
     }
-  } else {
-    y = *yp;
-    if (y > adjust->x0a && y < adjust->x0b) {
-      *yp = adjust->x0;
-    } else if (y > adjust->xma && y < adjust->xmb) {
-      *yp = adjust->xm;
-    } else if (y > adjust->x1a && y < adjust->x1b) {
-      *yp = adjust->x1;
+    if (adj0 > adj1) {
+      x0 = adj0;
+      adj0 = adj1;
+      adj1 = x0;
+    }
+    d = adj1 - adj0;
+    if (d > 0.04) {
+      d = 0.01;
+    } else {
+      d *= 0.25;
+    }
+    adjusts[i].x0a = adj0 - d;
+    adjusts[i].x0b = adj0 + d;
+    adjusts[i].xma = (SplashCoord)0.5 * (adj0 + adj1) - d;
+    adjusts[i].xmb = (SplashCoord)0.5 * (adj0 + adj1) + d;
+    adjusts[i].x1a = adj1 - d;
+    adjusts[i].x1b = adj1 + d;
+    splashStrokeAdjust(adj0, adj1, &xi0, &xi1);
+    adjusts[i].x0 = (SplashCoord)xi0;
+    // the "minus epsilon" thing here is needed when vector
+    // antialiasing is turned off -- otherwise stroke adjusted lines
+    // will touch an extra pixel on one edge
+    adjusts[i].x1 = (SplashCoord)xi1 - 0.001;
+    adjusts[i].xm = (SplashCoord)0.5 * (adjusts[i].x0 + adjusts[i].x1);
+    adjusts[i].firstPt = hint->firstPt;
+    adjusts[i].lastPt = hint->lastPt;
+  }
+
+  // perform stroke adjustment
+  for (i = 0, adjust = adjusts; i < nHints; ++i, ++adjust) {
+    for (j = adjust->firstPt; j <= adjust->lastPt; ++j) {
+      if (adjust->vert) {
+	x0 = pts[j].x;
+	if (x0 > adjust->x0a && x0 < adjust->x0b) {
+	  pts[j].x = adjust->x0;
+	} else if (x0 > adjust->xma && x0 < adjust->xmb) {
+	  pts[j].x = adjust->xm;
+	} else if (x0 > adjust->x1a && x0 < adjust->x1b) {
+	  pts[j].x = adjust->x1;
+	}
+      } else {
+	y0 = pts[j].y;
+	if (y0 > adjust->x0a && y0 < adjust->x0b) {
+	  pts[j].y = adjust->x0;
+	} else if (y0 > adjust->xma && y0 < adjust->xmb) {
+	  pts[j].y = adjust->xm;
+	} else if (y0 > adjust->x1a && y0 < adjust->x1b) {
+	  pts[j].y = adjust->x1;
+	}
+      }
     }
   }
+
+ done:
+  gfree(adjusts);
 }
 
 SplashXPath::SplashXPath(SplashXPath *xPath) {
@@ -230,6 +265,10 @@ SplashXPath::SplashXPath(SplashXPath *xPath) {
   size = xPath->size;
   segs = (SplashXPathSeg *)gmallocn(size, sizeof(SplashXPathSeg));
   memcpy(segs, xPath->segs, length * sizeof(SplashXPathSeg));
+  xMin = xPath->xMin;
+  yMin = xPath->yMin;
+  xMax = xPath->xMax;
+  yMax = xPath->yMax;
 }
 
 SplashXPath::~SplashXPath() {
@@ -341,115 +380,38 @@ void SplashXPath::addCurve(SplashCoord x0, SplashCoord y0,
 void SplashXPath::addSegment(SplashCoord x0, SplashCoord y0,
 			     SplashCoord x1, SplashCoord y1) {
   grow(1);
-  segs[length].x0 = x0;
-  segs[length].y0 = y0;
-  segs[length].x1 = x1;
-  segs[length].y1 = y1;
-  segs[length].flags = 0;
-  if (y1 == y0) {
-    segs[length].dxdy = segs[length].dydx = 0;
-    segs[length].flags |= splashXPathHoriz;
-    if (x1 == x0) {
-      segs[length].flags |= splashXPathVert;
-    }
-  } else if (x1 == x0) {
-    segs[length].dxdy = segs[length].dydx = 0;
-    segs[length].flags |= splashXPathVert;
+  if (y0 <= y1) {
+    segs[length].x0 = x0;
+    segs[length].y0 = y0;
+    segs[length].x1 = x1;
+    segs[length].y1 = y1;
+    segs[length].count = 1;
   } else {
+    segs[length].x0 = x1;
+    segs[length].y0 = y1;
+    segs[length].x1 = x0;
+    segs[length].y1 = y0;
+    segs[length].count = -1;
+  }
 #if USE_FIXEDPOINT
-    if (FixedPoint::divCheck(x1 - x0, y1 - y0, &segs[length].dxdy)) {
-      segs[length].dydx = (SplashCoord)1 / segs[length].dxdy;
-    } else {
-      segs[length].dxdy = segs[length].dydx = 0;
-      if (splashAbs(x1 - x0) > splashAbs(y1 - y0)) {
-	segs[length].flags |= splashXPathHoriz;
-      } else {
-	segs[length].flags |= splashXPathVert;
-      }
-    }
+  if (y0 == y1 || x0 == x1 ||
+      !FixedPoint::divCheck(x1 - x0, y1 - y0, &segs[length].dxdy) ||
+      !FixedPoint::divCheck(y1 - y0, x1 - x0, &segs[length].dydx)) {
+    segs[length].dxdy = 0;
+    segs[length].dydx = 0;
+  }
 #else
+  if (y0 == y1 || x0 == x1) {
+    segs[length].dxdy = 0;
+    segs[length].dydx = 0;
+  } else {
     segs[length].dxdy = (x1 - x0) / (y1 - y0);
-    segs[length].dydx = (SplashCoord)1 / segs[length].dxdy;
+    if (segs[length].dxdy == 0) {
+      segs[length].dydx = 0;
+    } else {
+      segs[length].dydx = 1 / segs[length].dxdy;
+    }
+  }
 #endif
-  }
-  if (y0 > y1) {
-    segs[length].flags |= splashXPathFlip;
-  }
   ++length;
-}
-
-void SplashXPath::aaScale() {
-  SplashXPathSeg *seg;
-  int i;
-
-  for (i = 0, seg = segs; i < length; ++i, ++seg) {
-    seg->x0 *= splashAASize;
-    seg->y0 *= splashAASize;
-    seg->x1 *= splashAASize;
-    seg->y1 *= splashAASize;
-  }
-}
-
-#if HAVE_STD_SORT
-
-struct cmpXPathSegsFunctor {
-  bool operator()(const SplashXPathSeg &seg0, const SplashXPathSeg &seg1) {
-    SplashCoord x0, y0, x1, y1;
-
-    if (seg0.flags & splashXPathFlip) {
-      x0 = seg0.x1;
-      y0 = seg0.y1;
-    } else {
-      x0 = seg0.x0;
-      y0 = seg0.y0;
-    }
-    if (seg1.flags & splashXPathFlip) {
-      x1 = seg1.x1;
-      y1 = seg1.y1;
-    } else {
-      x1 = seg1.x0;
-      y1 = seg1.y0;
-    }
-    return (y0 != y1) ? (y0 < y1) : (x0 < x1);
-  }
-};
-
-#else // HAVE_STD_SORT
-
-static int cmpXPathSegs(const void *arg0, const void *arg1) {
-  SplashXPathSeg *seg0 = (SplashXPathSeg *)arg0;
-  SplashXPathSeg *seg1 = (SplashXPathSeg *)arg1;
-  SplashCoord x0, y0, x1, y1;
-
-  if (seg0->flags & splashXPathFlip) {
-    x0 = seg0->x1;
-    y0 = seg0->y1;
-  } else {
-    x0 = seg0->x0;
-    y0 = seg0->y0;
-  }
-  if (seg1->flags & splashXPathFlip) {
-    x1 = seg1->x1;
-    y1 = seg1->y1;
-  } else {
-    x1 = seg1->x0;
-    y1 = seg1->y0;
-  }
-  if (y0 != y1) {
-    return (y0 > y1) ? 1 : -1;
-  }
-  if (x0 != x1) {
-    return (x0 > x1) ? 1 : -1;
-  }
-  return 0;
-}
-
-#endif // HAVE_STD_SORT
-
-void SplashXPath::sort() {
-#if HAVE_STD_SORT
-  std::sort(segs, segs + length, cmpXPathSegsFunctor());
-#else
-  qsort(segs, length, sizeof(SplashXPathSeg), &cmpXPathSegs);
-#endif
 }

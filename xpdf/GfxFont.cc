@@ -146,6 +146,7 @@ static int readFromStream(void *data) {
 GfxFontLoc::GfxFontLoc() {
   path = NULL;
   fontNum = 0;
+  oblique = 0;
   encoding = NULL;
   substIdx = -1;
 }
@@ -175,6 +176,8 @@ GfxFont *GfxFont::makeFont(XRef *xref, char *tagA, Ref idA, Dict *fontDict) {
   fontDict->lookup("BaseFont", &obj1);
   if (obj1.isName()) {
     nameA = new GString(obj1.getName());
+  } else if (obj1.isString()) {
+    nameA = obj1.getString()->copy();
   }
   obj1.free();
 
@@ -451,7 +454,7 @@ void GfxFont::readFontDescriptor(XRef *xref, Dict *fontDict) {
       }
       // some broken font descriptors set ascent and descent to 0;
       // others set it to ridiculous values (e.g., 32768)
-      if (t != 0 && t < 3) {
+      if (t != 0 && t < 1.9) {
 	ascent = t;
       }
     }
@@ -464,7 +467,7 @@ void GfxFont::readFontDescriptor(XRef *xref, Dict *fontDict) {
 	t = -t;
       }
       // some broken font descriptors set ascent and descent to 0
-      if (t != 0 && t > -3) {
+      if (t != 0 && t > -1.9) {
 	descent = t;
       }
     }
@@ -489,7 +492,8 @@ CharCodeToUnicode *GfxFont::readToUnicodeCMap(Dict *fontDict, int nBits,
 					      CharCodeToUnicode *ctu) {
   GString *buf;
   Object obj1;
-  int c;
+  char buf2[4096];
+  int n;
 
   if (!fontDict->lookup("ToUnicode", &obj1)->isStream()) {
     obj1.free();
@@ -497,8 +501,8 @@ CharCodeToUnicode *GfxFont::readToUnicodeCMap(Dict *fontDict, int nBits,
   }
   buf = new GString();
   obj1.streamReset();
-  while ((c = obj1.streamGetChar()) != EOF) {
-    buf->append(c);
+  while ((n = obj1.streamGetBlock(buf2, sizeof(buf2))) > 0) {
+    buf->append(buf2, n);
   }
   obj1.streamClose();
   obj1.free();
@@ -518,6 +522,7 @@ GfxFontLoc *GfxFont::locateFont(XRef *xref, GBool ps) {
   PSFontParam16 *psFont16;
   Object refObj, embFontObj;
   int substIdx, fontNum;
+  double oblique;
   GBool embed;
 
   if (type == fontType3) {
@@ -570,12 +575,19 @@ GfxFontLoc *GfxFont::locateFont(XRef *xref, GBool ps) {
   }
 
   //----- PS passthrough
-  if (ps && !isCIDFont() && globalParams->getPSFontPassthrough()) {
+  if (ps && name && !isCIDFont() && globalParams->getPSFontPassthrough()) {
     fontLoc = new GfxFontLoc();
     fontLoc->locType = gfxFontLocResident;
     fontLoc->fontType = fontType1;
     fontLoc->path = name->copy();
     return fontLoc;
+  }
+
+  //----- external font file (fontFile, fontDir)
+  if (name && (path = globalParams->findFontFile(name))) {
+    if ((fontLoc = getExternalFont(path, 0, 0, isCIDFont()))) {
+      return fontLoc;
+    }
   }
 
   //----- PS resident Base-14 font
@@ -587,28 +599,19 @@ GfxFontLoc *GfxFont::locateFont(XRef *xref, GBool ps) {
     return fontLoc;
   }
 
-  //----- external font file (fontFile, fontDir)
-  if ((path = globalParams->findFontFile(name))) {
-    if ((fontLoc = getExternalFont(path, isCIDFont()))) {
+  //----- external font file for Base-14 font
+  if (!ps && !isCIDFont() && ((Gfx8BitFont *)this)->base14) {
+    base14Name = new GString(((Gfx8BitFont *)this)->base14->base14Name);
+    path = globalParams->findBase14FontFile(base14Name, &fontNum, &oblique);
+    delete base14Name;
+    if (path && (fontLoc = getExternalFont(path, fontNum, oblique, gFalse))) {
       return fontLoc;
     }
   }
 
-  //----- external font file for Base-14 font
-  if (!ps && !isCIDFont() && ((Gfx8BitFont *)this)->base14) {
-    base14Name = new GString(((Gfx8BitFont *)this)->base14->base14Name);
-    if ((path = globalParams->findFontFile(base14Name))) {
-      if ((fontLoc = getExternalFont(path, gFalse))) {
-	delete base14Name;
-	return fontLoc;
-      }
-    }
-    delete base14Name;
-  }
-
   //----- system font
-  if ((path = globalParams->findSystemFontFile(name, &sysFontType,
-					       &fontNum))) {
+  if (name && (path = globalParams->findSystemFontFile(name, &sysFontType,
+						       &fontNum))) {
     if (isCIDFont()) {
       if (sysFontType == sysFontTTF || sysFontType == sysFontTTC) {
 	fontLoc = new GfxFontLoc();
@@ -624,13 +627,13 @@ GfxFontLoc *GfxFont::locateFont(XRef *xref, GBool ps) {
 	fontLoc->locType = gfxFontLocExternal;
 	fontLoc->fontType = fontTrueType;
 	fontLoc->path = path;
+	fontLoc->fontNum = fontNum;
 	return fontLoc;
       } else if (sysFontType == sysFontPFA || sysFontType == sysFontPFB) {
 	fontLoc = new GfxFontLoc();
 	fontLoc->locType = gfxFontLocExternal;
 	fontLoc->fontType = fontType1;
 	fontLoc->path = path;
-	fontLoc->fontNum = fontNum;
 	return fontLoc;
       }
     }
@@ -641,7 +644,7 @@ GfxFontLoc *GfxFont::locateFont(XRef *xref, GBool ps) {
 
     //----- 8-bit PS resident font
     if (ps) {
-      if ((path = globalParams->getPSResidentFont(name))) {
+      if (name && (path = globalParams->getPSResidentFont(name))) {
 	fontLoc = new GfxFontLoc();
 	fontLoc->locType = gfxFontLocResident;
 	fontLoc->fontType = fontType1;
@@ -675,10 +678,10 @@ GfxFontLoc *GfxFont::locateFont(XRef *xref, GBool ps) {
       fontLoc->substIdx = substIdx;
       return fontLoc;
     } else {
-      path = globalParams->findFontFile(substName);
+      path = globalParams->findBase14FontFile(substName, &fontNum, &oblique);
       delete substName;
       if (path) {
-	if ((fontLoc = getExternalFont(path, gFalse))) {
+	if ((fontLoc = getExternalFont(path, fontNum, oblique, gFalse))) {
 	  error(errSyntaxWarning, -1, "Substituting font '{0:s}' for '{1:t}'",
 		base14SubstFonts[substIdx], name);
 	  fontLoc->substIdx = substIdx;
@@ -692,7 +695,7 @@ GfxFontLoc *GfxFont::locateFont(XRef *xref, GBool ps) {
   }
 
   //----- 16-bit PS resident font
-  if (ps && ((psFont16 = globalParams->getPSResidentFont16(
+  if (ps && name && ((psFont16 = globalParams->getPSResidentFont16(
 					 name,
 					 ((GfxCIDFont *)this)->getWMode())))) {
     fontLoc = new GfxFontLoc();
@@ -720,7 +723,7 @@ GfxFontLoc *GfxFont::locateFont(XRef *xref, GBool ps) {
   //----- CID font substitution
   if ((path = globalParams->findCCFontFile(
 				((GfxCIDFont *)this)->getCollection()))) {
-    if ((fontLoc = getExternalFont(path, gTrue))) {
+    if ((fontLoc = getExternalFont(path, 0, 0, gTrue))) {
       error(errSyntaxWarning, -1, "Substituting font '{0:t}' for '{1:t}'",
 	    fontLoc->path, name);
       return fontLoc;
@@ -733,15 +736,18 @@ GfxFontLoc *GfxFont::locateFont(XRef *xref, GBool ps) {
 
 GfxFontLoc *GfxFont::locateBase14Font(GString *base14Name) {
   GString *path;
+  int fontNum;
+  double oblique;
 
-  path = globalParams->findFontFile(base14Name);
+  path = globalParams->findBase14FontFile(base14Name, &fontNum, &oblique);
   if (!path) {
     return NULL;
   }
-  return getExternalFont(path, gFalse);
+  return getExternalFont(path, fontNum, oblique, gFalse);
 }
 
-GfxFontLoc *GfxFont::getExternalFont(GString *path, GBool cid) {
+GfxFontLoc *GfxFont::getExternalFont(GString *path, int fontNum,
+				     double oblique, GBool cid) {
   FoFiIdentifierType fft;
   GfxFontType fontType;
   GfxFontLoc *fontLoc;
@@ -768,6 +774,9 @@ GfxFontLoc *GfxFont::getExternalFont(GString *path, GBool cid) {
   case fofiIdOpenTypeCFFCID:
     fontType = fontCIDType0COT;
     break;
+  case fofiIdDfont:
+    fontType = cid ? fontCIDType2 : fontTrueType;
+    break;
   case fofiIdUnknown:
   case fofiIdError:
   default:
@@ -784,6 +793,8 @@ GfxFontLoc *GfxFont::getExternalFont(GString *path, GBool cid) {
   fontLoc->locType = gfxFontLocExternal;
   fontLoc->fontType = fontType;
   fontLoc->path = path;
+  fontLoc->fontNum = fontNum;
+  fontLoc->oblique = oblique;
   return fontLoc;
 }
 
@@ -791,8 +802,7 @@ char *GfxFont::readEmbFontFile(XRef *xref, int *len) {
   char *buf;
   Object obj1, obj2;
   Stream *str;
-  int c;
-  int size, i;
+  int size, n;
 
   obj1.initRef(embFontID.num, embFontID.gen);
   obj1.fetch(xref, &obj2);
@@ -805,21 +815,19 @@ char *GfxFont::readEmbFontFile(XRef *xref, int *len) {
   }
   str = obj2.getStream();
 
+  size = 0;
   buf = NULL;
-  i = size = 0;
   str->reset();
-  while ((c = str->getChar()) != EOF) {
-    if (i == size) {
-      if (size > INT_MAX - 4096) {
-	error(errSyntaxError, -1, "Embedded font file is too large");
-	break;
-      }
-      size += 4096;
-      buf = (char *)grealloc(buf, size);
+  do {
+    if (size > INT_MAX - 4096) {
+      error(errSyntaxError, -1, "Embedded font file is too large");
+      break;
     }
-    buf[i++] = c;
-  }
-  *len = i;
+    buf = (char *)grealloc(buf, size + 4096);
+    n = str->getBlock(buf + size, 4096);
+    size += n;
+  } while (n == 4096);
+  *len = size;
   str->close();
 
   obj2.free();
@@ -908,8 +916,8 @@ Gfx8BitFont::Gfx8BitFont(XRef *xref, char *tagA, Ref idA, GString *nameA,
     fontBBox[2] = 0.001 * builtinFont->bbox[2];
     fontBBox[3] = 0.001 * builtinFont->bbox[3];
   } else {
-    ascent = 0.95;
-    descent = -0.35;
+    ascent = 0.75;
+    descent = -0.25;
     fontBBox[0] = fontBBox[1] = fontBBox[2] = fontBBox[3] = 0;
   }
 
@@ -1491,6 +1499,15 @@ Object *Gfx8BitFont::getCharProc(int code, Object *proc) {
   return proc;
 }
 
+Object *Gfx8BitFont::getCharProcNF(int code, Object *proc) {
+  if (enc[code] && charProcs.isDict()) {
+    charProcs.dictLookupNF(enc[code], proc);
+  } else {
+    proc->initNull();
+  }
+  return proc;
+}
+
 Dict *Gfx8BitFont::getResources() {
   return resources.isDict() ? resources.getDict() : (Dict *)NULL;
 }
@@ -1565,7 +1582,6 @@ GfxCIDFont::GfxCIDFont(XRef *xref, char *tagA, Ref idA, GString *nameA,
     error(errSyntaxError, -1,
 	  "Missing or empty DescendantFonts entry in Type 0 font");
     obj1.free();
-
     goto err1;
   }
   if (!obj1.arrayGet(0, &desFontDictObj)->isDict()) {
@@ -1661,6 +1677,7 @@ GfxCIDFont::GfxCIDFont(XRef *xref, char *tagA, Ref idA, GString *nameA,
 	}
 	cidToGID[cidToGIDLen++] = (c1 << 8) + c2;
       }
+      obj1.streamClose();
     } else if (!obj1.isName("Identity") && !obj1.isNull()) {
       error(errSyntaxError, -1, "Invalid CIDToGIDMap entry in CID font");
     }
@@ -1836,7 +1853,8 @@ GfxCIDFont::GfxCIDFont(XRef *xref, char *tagA, Ref idA, GString *nameA,
  err2:
   obj1.free();
   desFontDictObj.free();
- err1:;
+ err1:
+  error(errSyntaxError, -1, "Failed to parse font object for '{0:t}'", name);
 }
 
 GfxCIDFont::~GfxCIDFont() {
@@ -2011,6 +2029,19 @@ GfxFont *GfxFontDict::lookup(char *tag) {
 
   for (i = 0; i < numFonts; ++i) {
     if (fonts[i] && fonts[i]->matches(tag)) {
+      return fonts[i];
+    }
+  }
+  return NULL;
+}
+
+GfxFont *GfxFontDict::lookupByRef(Ref ref) {
+  int i;
+
+  for (i = 0; i < numFonts; ++i) {
+    if (fonts[i] &&
+	fonts[i]->getID()->num == ref.num &&
+	fonts[i]->getID()->gen == ref.gen) {
       return fonts[i];
     }
   }

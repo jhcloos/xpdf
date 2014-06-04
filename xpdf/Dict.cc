@@ -20,13 +20,24 @@
 #include "Dict.h"
 
 //------------------------------------------------------------------------
+
+struct DictEntry {
+  char *key;
+  Object val;
+  DictEntry *next;
+};
+
+//------------------------------------------------------------------------
 // Dict
 //------------------------------------------------------------------------
 
 Dict::Dict(XRef *xrefA) {
   xref = xrefA;
-  entries = NULL;
-  size = length = 0;
+  size = 8;
+  length = 0;
+  entries = (DictEntry *)gmallocn(size, sizeof(DictEntry));
+  hashTab = (DictEntry **)gmallocn(2 * size - 1, sizeof(DictEntry *));
+  memset(hashTab, 0, (2 * size - 1) * sizeof(DictEntry *));
   ref = 1;
 }
 
@@ -38,30 +49,67 @@ Dict::~Dict() {
     entries[i].val.free();
   }
   gfree(entries);
+  gfree(hashTab);
 }
 
 void Dict::add(char *key, Object *val) {
-  if (length == size) {
-    if (length == 0) {
-      size = 8;
-    } else {
-      size *= 2;
+  DictEntry *e;
+  int h;
+
+  if ((e = find(key))) {
+    e->val.free();
+    e->val = *val;
+    gfree(key);
+  } else {
+    if (length == size) {
+      expand();
     }
-    entries = (DictEntry *)greallocn(entries, size, sizeof(DictEntry));
+    h = hash(key);
+    entries[length].key = key;
+    entries[length].val = *val;
+    entries[length].next = hashTab[h];
+    hashTab[h] = &entries[length];
+    ++length;
   }
-  entries[length].key = key;
-  entries[length].val = *val;
-  ++length;
+}
+
+void Dict::expand() {
+  int h, i;
+
+  size *= 2;
+  entries = (DictEntry *)greallocn(entries, size, sizeof(DictEntry));
+  hashTab = (DictEntry **)greallocn(hashTab, 2 * size - 1,
+				    sizeof(DictEntry *));
+  memset(hashTab, 0, (2 * size - 1) * sizeof(DictEntry *));
+  for (i = 0; i < length; ++i) {
+    h = hash(entries[i].key);
+    entries[i].next = hashTab[h];
+    hashTab[h] = &entries[i];
+  }
 }
 
 inline DictEntry *Dict::find(const char *key) {
-  int i;
+  DictEntry *e;
+  int h;
 
-  for (i = 0; i < length; ++i) {
-    if (!strcmp(key, entries[i].key))
-      return &entries[i];
+  h = hash(key);
+  for (e = hashTab[h]; e; e = e->next) {
+    if (!strcmp(key, e->key)) {
+      return e;
+    }
   }
   return NULL;
+}
+
+int Dict::hash(const char *key) {
+  const char *p;
+  unsigned int h;
+
+  h = 0;
+  for (p = key; *p; ++p) {
+    h = 17 * h + (int)(*p & 0xff);
+  }
+  return (int)(h % (2 * size - 1));
 }
 
 GBool Dict::is(const char *type) {

@@ -19,6 +19,7 @@
 #include <string.h>
 #include "gtypes.h"
 #include "gmem.h"
+#include "gfile.h"
 #include "GString.h"
 
 class XRef;
@@ -179,9 +180,10 @@ public:
   void streamClose();
   int streamGetChar();
   int streamLookChar();
+  int streamGetBlock(char *blk, int size);
   char *streamGetLine(char *buf, int size);
-  Guint streamGetPos();
-  void streamSetPos(Guint pos, int dir = 0);
+  GFileOffset streamGetPos();
+  void streamSetPos(GFileOffset pos, int dir = 0);
   Dict *streamGetDict();
 
   // Output.
@@ -288,13 +290,16 @@ inline int Object::streamGetChar()
 inline int Object::streamLookChar()
   { return stream->lookChar(); }
 
+inline int Object::streamGetBlock(char *blk, int size)
+  { return stream->getBlock(blk, size); }
+
 inline char *Object::streamGetLine(char *buf, int size)
   { return stream->getLine(buf, size); }
 
-inline Guint Object::streamGetPos()
+inline GFileOffset Object::streamGetPos()
   { return stream->getPos(); }
 
-inline void Object::streamSetPos(Guint pos, int dir)
+inline void Object::streamSetPos(GFileOffset pos, int dir)
   { stream->setPos(pos, dir); }
 
 inline Dict *Object::streamGetDict()

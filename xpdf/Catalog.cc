@@ -2,7 +2,7 @@
 //
 // Catalog.cc
 //
-// Copyright 1996-2007 Glyph & Cog, LLC
+// Copyright 1996-2013 Glyph & Cog, LLC
 //
 //========================================================================
 
@@ -27,7 +27,8 @@
 #include "Page.h"
 #include "Error.h"
 #include "Link.h"
-#include "PDFDocEncoding.h"
+#include "Form.h"
+#include "TextString.h"
 #include "Catalog.h"
 
 //------------------------------------------------------------------------
@@ -69,23 +70,20 @@ PageTreeNode::~PageTreeNode() {
 class EmbeddedFile {
 public:
 
-  EmbeddedFile(Unicode *nameA, int nameLenA, Object *streamRefA);
+  EmbeddedFile(TextString *nameA, Object *streamRefA);
   ~EmbeddedFile();
 
-  Unicode *name;
-  int nameLen;
+  TextString *name;
   Object streamRef;
 };
 
-EmbeddedFile::EmbeddedFile(Unicode *nameA, int nameLenA,
-			   Object *streamRefA) {
+EmbeddedFile::EmbeddedFile(TextString *nameA, Object *streamRefA) {
   name = nameA;
-  nameLen = nameLenA;
   streamRefA->copy(&streamRef);
 }
 
 EmbeddedFile::~EmbeddedFile() {
-  gfree(name);
+  delete name;
   streamRef.free();
 }
 
@@ -105,6 +103,7 @@ Catalog::Catalog(PDFDoc *docA) {
   pageRefs = NULL;
   numPages = 0;
   baseURI = NULL;
+  form = NULL;
   embeddedFiles = NULL;
 
   xref->getCatalog(&catDict);
@@ -165,6 +164,10 @@ Catalog::Catalog(PDFDoc *docA) {
   // get the AcroForm dictionary
   catDict.dictLookup("AcroForm", &acroForm);
 
+  if (!acroForm.isNull()) {
+    form = Form::load(doc, this, &acroForm);
+  }
+
   // get the OCProperties dictionary
   catDict.dictLookup("OCProperties", &ocProperties);
 
@@ -205,6 +208,9 @@ Catalog::~Catalog() {
   structTreeRoot.free();
   outline.free();
   acroForm.free();
+  if (form) {
+    delete form;
+  }
   ocProperties.free();
   if (embeddedFiles) {
     deleteGList(embeddedFiles, EmbeddedFile);
@@ -236,7 +242,8 @@ GString *Catalog::readMetadata() {
   GString *s;
   Dict *dict;
   Object obj;
-  int c;
+  char buf[4096];
+  int n;
 
   if (!metadata.isStream()) {
     return NULL;
@@ -249,8 +256,8 @@ GString *Catalog::readMetadata() {
   obj.free();
   s = new GString();
   metadata.streamReset();
-  while ((c = metadata.streamGetChar()) != EOF) {
-    s->append(c);
+  while ((n = metadata.streamGetBlock(buf, sizeof(buf))) > 0) {
+    s->append(buf, n);
   }
   metadata.streamClose();
   return s;
@@ -615,6 +622,12 @@ void Catalog::readFileAttachmentAnnots(Object *pageNodeRef,
   Object pageNode, kids, kid, annots, annot, subtype, fileSpec, contents;
   int i;
 
+  // check for an invalid object reference (e.g., in a damaged PDF file)
+  if (pageNodeRef->getRefNum() < 0 ||
+      pageNodeRef->getRefNum() >= xref->getNumObjects()) {
+    return;
+  }
+
   // check for a page tree loop
   if (pageNodeRef->isRef()) {
     if (touchedObjs[pageNodeRef->getRefNum()]) {
@@ -661,42 +674,22 @@ void Catalog::readFileAttachmentAnnots(Object *pageNodeRef,
 void Catalog::readEmbeddedFile(Object *fileSpec, Object *name1) {
   Object name2, efObj, streamObj;
   GString *s;
-  Unicode *name;
-  int nameLen, i;
+  TextString *name;
 
   if (fileSpec->isDict()) {
     if (fileSpec->dictLookup("UF", &name2)->isString()) {
-      s = name2.getString();
+      name = new TextString(name2.getString());
     } else {
       name2.free();
       if (fileSpec->dictLookup("F", &name2)->isString()) {
-	s = name2.getString();
+	name = new TextString(name2.getString());
       } else if (name1 && name1->isString()) {
-	s = name1->getString();
+	name = new TextString(name1->getString());
       } else {
-	s = NULL;
+	s = new GString("?");
+	name = new TextString(s);
+	delete s;
       }
-    }
-    if (s) {
-      if ((s->getChar(0) & 0xff) == 0xfe &&
-	  (s->getChar(1) & 0xff) == 0xff) {
-	nameLen = (s->getLength() - 2) / 2;
-	name = (Unicode *)gmallocn(nameLen, sizeof(Unicode));
-	for (i = 0; i < nameLen; ++i) {
-	  name[i] = ((s->getChar(2 + 2*i) & 0xff) << 8) |
-	             (s->getChar(3 + 2*i) & 0xff);
-	}
-      } else {
-	nameLen = s->getLength();
-	name = (Unicode *)gmallocn(nameLen, sizeof(Unicode));
-	for (i = 0; i < nameLen; ++i) {
-	  name[i] = pdfDocEncoding[s->getChar(i) & 0xff];
-	}
-      }
-    } else {
-      nameLen = 1;
-      name = (Unicode *)gmallocn(nameLen, sizeof(Unicode));
-      name[0] = '?';
     }
     name2.free();
     if (fileSpec->dictLookup("EF", &efObj)->isDict()) {
@@ -704,13 +697,13 @@ void Catalog::readEmbeddedFile(Object *fileSpec, Object *name1) {
 	if (!embeddedFiles) {
 	  embeddedFiles = new GList();
 	}
-	embeddedFiles->append(new EmbeddedFile(name, nameLen, &streamObj));
+	embeddedFiles->append(new EmbeddedFile(name, &streamObj));
       } else {
-	gfree(name);
+	delete name;
       }
       streamObj.free();
     } else {
-      gfree(name);
+      delete name;
     }
     efObj.free();
   }
@@ -721,11 +714,15 @@ int Catalog::getNumEmbeddedFiles() {
 }
 
 Unicode *Catalog::getEmbeddedFileName(int idx) {
-  return ((EmbeddedFile *)embeddedFiles->get(idx))->name;
+  return ((EmbeddedFile *)embeddedFiles->get(idx))->name->getUnicode();
 }
 
 int Catalog::getEmbeddedFileNameLength(int idx) {
-  return ((EmbeddedFile *)embeddedFiles->get(idx))->nameLen;
+  return ((EmbeddedFile *)embeddedFiles->get(idx))->name->getLength();
+}
+
+Object *Catalog::getEmbeddedFileStreamRef(int idx) {
+  return &((EmbeddedFile *)embeddedFiles->get(idx))->streamRef;
 }
 
 Object *Catalog::getEmbeddedFileStreamObj(int idx, Object *strObj) {

@@ -283,34 +283,36 @@ void CMap::copyVector(CMapVectorEntry *dest, CMapVectorEntry *src) {
 
 void CMap::addCIDs(Guint start, Guint end, Guint nBytes, CID firstCID) {
   CMapVectorEntry *vec;
-  CID cid;
-  int byte;
-  Guint i, j;
+  int byte, byte0, byte1;
+  Guint start1, end1, i, j, k;
 
-  vec = vector;
-  for (i = nBytes - 1; i >= 1; --i) {
-    byte = (start >> (8 * i)) & 0xff;
-    if (!vec[byte].isVector) {
-      vec[byte].isVector = gTrue;
-      vec[byte].vector =
-	  (CMapVectorEntry *)gmallocn(256, sizeof(CMapVectorEntry));
-      for (j = 0; j < 256; ++j) {
-	vec[byte].vector[j].isVector = gFalse;
-	vec[byte].vector[j].cid = 0;
+  start1 = start & 0xffffff00;
+  end1 = end & 0xffffff00;
+  for (i = start1; i <= end1; i += 0x100) {
+    vec = vector;
+    for (j = nBytes - 1; j >= 1; --j) {
+      byte = (i >> (8 * j)) & 0xff;
+      if (!vec[byte].isVector) {
+	vec[byte].isVector = gTrue;
+	vec[byte].vector =
+	    (CMapVectorEntry *)gmallocn(256, sizeof(CMapVectorEntry));
+	for (k = 0; k < 256; ++k) {
+	  vec[byte].vector[k].isVector = gFalse;
+	  vec[byte].vector[k].cid = 0;
+	}
+      }
+      vec = vec[byte].vector;
+    }
+    byte0 = (i < start) ? (start & 0xff) : 0;
+    byte1 = (i + 0xff > end) ? (end & 0xff) : 0xff;
+    for (byte = byte0; byte <= byte1; ++byte) {
+      if (vec[byte].isVector) {
+	error(errSyntaxError, -1, "Invalid CID ({0:x} [{1:d} bytes]) in CMap",
+	      i, nBytes);
+      } else {
+	vec[byte].cid = firstCID + ((i + byte) - start);
       }
     }
-    vec = vec[byte].vector;
-  }
-  cid = firstCID;
-  for (byte = (int)(start & 0xff); byte <= (int)(end & 0xff); ++byte) {
-    if (vec[byte].isVector) {
-      error(errSyntaxError, -1,
-	    "Invalid CID ({0:x} - {1:x} [{2:d} bytes]) in CMap",
-	    start, end, nBytes);
-    } else {
-      vec[byte].cid = cid;
-    }
-    ++cid;
   }
 }
 
